@@ -1,0 +1,76 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&family=Inter:wght@300;400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-serif: "Cormorant Garamond", ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  
+  --color-monastery-bg: #0a0502;
+  --color-monastery-accent: #d4af37; /* Gold */
+  --color-monastery-text: #e0d8d0;
+  --color-monastery-muted: rgba(224, 216, 208, 0.4);
+}
+
+body {
+  background-color: var(--color-monastery-bg);
+  color: var(--color-monastery-text);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+}
+
+.font-serif {
+  font-family: var(--font-serif);
+}
+
+.glass-panel {
+  background: rgba(20, 15, 10, 0.6);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(212, 175, 55, 0.1);
+}
+
+/* Atmospheric background */
+.atmosphere {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: -1;
+  background-image: 
+    radial-gradient(circle at 50% 30%, rgba(42, 21, 16, 0.8) 0%, rgba(10, 5, 2, 0.95) 70%),
+    url('https://picsum.photos/seed/monastery/1920/1080');
+  background-size: cover;
+  background-position: center;
+  filter: blur(8px);
+  transform: scale(1.05); /* Prevent blur edges from showing */
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-monastery-muted);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-monastery-accent);
+}
+
+/* Markdown styles */
+.markdown-body h1, .markdown-body h2, .markdown-body h3 {
+  color: var(--color-monastery-accent);
+  font-weight: 600;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+.markdown-body p {
+  margin-bottom: 1rem;
+}
+.markdown-body strong {
+  color: var(--color-monastery-accent);
+  font-weight: 600;
+}
