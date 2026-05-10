@@ -4,11 +4,21 @@ import { getCachedPrayer, setCachedPrayer } from './prayerCache';
 
 // ─── Gemini Client ───
 let aiInstance: GoogleGenAI | null = null;
-function getAI() {
+async function getAI() {
   if (!aiInstance) {
-    const apiKey = process.env.GEMINI_API_KEY;
+    let apiKey = process.env.GEMINI_API_KEY;
+
     if (!apiKey) {
-      throw new Error('GEMINI_API_KEY is not defined in the environment');
+      try {
+        const { rtdbGet } = await import('./firebase');
+        apiKey = await rtdbGet('config/gemini_api_key');
+      } catch (err) {
+        console.warn('[Cathedral] Failed to fetch API key from Firebase:', err);
+      }
+    }
+
+    if (!apiKey) {
+      throw new Error('GEMINI_API_KEY is not defined. Set it in .env or Firebase RTDB at /config/gemini_api_key');
     }
     aiInstance = new GoogleGenAI({ apiKey });
   }
@@ -28,14 +38,14 @@ export async function generatePrayerText(hourName: HourName, date: Date): Promis
 
   // 2. Try Gemini
   try {
-    const ai = getAI();
+    const ai = await getAI();
     const prompt = `Generate a short version of the text for the Catholic Liturgy of the Hours for ${hourName} for today (${date.toDateString()}). 
     Keep it under 150 words. Include a short reading, a responsory, and a concluding prayer. 
     Format it nicely using Markdown. Do not include any conversational filler, just the prayer text itself.
     Make it sound authentic to a monastic setting (e.g., Carthusian or Carmelite).`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-1.5-flash',
       contents: prompt,
       config: {
         systemInstruction: 'You are a monastic scribe providing the exact text for the Liturgy of the Hours for the Gatrivi Digital Chapel.',
@@ -55,9 +65,9 @@ export async function generatePrayerText(hourName: HourName, date: Date): Promis
 
 // ─── Audio Generation (Gemini TTS) ───
 export async function generatePrayerAudio(text: string): Promise<string> {
-  const ai = getAI();
+  const ai = await getAI();
   const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-preview-tts',
+    model: 'gemini-1.5-flash',
     contents: [{ parts: [{ text }] }],
     config: {
       responseModalities: [Modality.AUDIO],
