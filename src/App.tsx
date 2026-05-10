@@ -4,69 +4,70 @@ import { Bell, Play, Pause, Volume2, VolumeX, SkipForward, BookOpen, Clock, Aler
 import { format } from 'date-fns';
 import Markdown from 'react-markdown';
 import { getCurrentAndNextHour, HOURS_SCHEDULE, LiturgicalHour } from './lib/hours';
-import { generatePrayerText, generatePrayerAudio } from './services/gemini';
+import { generatePrayerText, generateAudioOrFallback, SpeechController } from './services/gemini';
+import { loadNotebook, saveNotebook } from './services/notebook';
+import { getCachedAudio, setCachedAudio } from './services/prayerCache';
+import { uploadAudio } from './services/firebase';
 import { useCosmicResonator } from './sacred/useCosmicResonator';
 import { SacredDrawing } from './sacred/procedural-rose';
 
-// A simple bell sound (public domain/CC0)
 const BELL_SOUND_URL = 'https://upload.wikimedia.org/wikipedia/commons/b/b4/Bell-sound.ogg';
+
+function base64ToBlob(base64: string, mimeType = 'audio/wav'): Blob {
+  const byteCharacters = atob(base64);
+  const byteArrays: Uint8Array[] = [];
+  for (let i = 0; i < byteCharacters.length; i += 512) {
+    const slice = byteCharacters.slice(i, i + 512);
+    const byteNumbers = new Array(slice.length);
+    for (let j = 0; j < slice.length; j++) {
+      byteNumbers[j] = slice.charCodeAt(j);
+    }
+    byteArrays.push(new Uint8Array(byteNumbers));
+  }
+  return new Blob(byteArrays, { type: mimeType });
+}
 
 function Notebook() {
   const [content, setContent] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    fetch('/api/notebook')
-      .then(res => res.json())
-      .then(data => setContent(data.content))
-      .catch(err => console.error("Failed to load notebook", err));
+    loadNotebook()
+      .then(text => setContent(text))
+      .catch(err => console.error('Failed to load notebook', err));
   }, []);
 
   const handleSave = async (newContent: string) => {
     setContent(newContent);
     setIsSaving(true);
     try {
-      await fetch('/api/notebook', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: newContent })
-      });
+      await saveNotebook(newContent);
     } catch (err) {
-      console.error("Failed to save notebook", err);
+      console.error('Failed to save notebook', err);
     }
     setIsSaving(false);
   };
 
   return (
     <div className="glass-panel p-6 rounded-2xl flex flex-col h-64 md:h-full">
-      <h3 className="text-xs uppercase tracking-widest opacity-50 mb-4 flex justify-between">
-        <span>Personal Notebook</span>
+      <h3 className="text-sm uppercase tracking-widest opacity-60 mb-4 flex justify-between items-center">
+        <span className="flex items-center gap-2"><BookOpen size={18} /> Personal Notebook</span>
         {isSaving && <span className="text-[var(--color-monastery-accent)]">Saving...</span>}
       </h3>
       <textarea
         value={content}
         onChange={(e) => handleSave(e.target.value)}
-        className="w-full h-full bg-transparent resize-none outline-none font-serif text-lg leading-relaxed text-[var(--color-monastery-text)] placeholder:opacity-30"
-        placeholder="Write your chores and thoughts here..."
+        className="w-full h-full bg-transparent resize-none outline-none font-serif text-xl leading-relaxed text-[var(--color-monastery-text)] placeholder:opacity-30"
+        placeholder="Write your thoughts here..."
       />
     </div>
   );
 }
 
 export default function App() {
-  console.log('[DEBUG] App: Component Rendering');
-
-  const { init: initResonator, start: startResonator, stop: stopResonator, setProgress: setResonatorProgress, playBell: playResonatorBell } = useCosmicResonator();
-
-  useEffect(() => {
-    const bg = getComputedStyle(document.body).getPropertyValue('--color-monastery-bg');
-    console.log('[DEBUG] App: CSS Variable --color-monastery-bg:', bg || 'NOT FOUND');
-    const isTailwindLoaded = getComputedStyle(document.documentElement).getPropertyValue('--font-sans');
-    console.log('[DEBUG] App: Tailwind Font Sans loaded:', !!isTailwindLoaded);
-  }, []);
+  const { init: initResonator, start: startResonator, stop: stopResonator, playBell: playResonatorBell } = useCosmicResonator();
 
   const [hasEntered, setHasEntered] = useState(false);
-  // ... rest of state
   const [currentTime, setCurrentTime] = useState(new Date());
   const [currentHour, setCurrentHour] = useState<LiturgicalHour | null>(null);
   const [nextHour, setNextHour] = useState<LiturgicalHour | null>(null);
@@ -78,181 +79,227 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [audioProgress, setAudioProgress] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
-  
+  const [audioMode, setAudioMode] = useState<'gemini' | 'speech' | null>(null);
+  const [loadingMessage, setLoadingMessage] = useState('Preparing your prayer...');
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const bellRef = useRef<HTMLAudioElement | null>(null);
-  const notebookRef = useRef<HTMLTextAreaElement | null>(null);
-
+  const speechCtrlRef = useRef<SpeechController | null>(null);
   const lastPlayedHourRef = useRef<string | null>(null);
+  const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const playHourRef = useRef<(hour: LiturgicalHour, fadeIn?: boolean) => Promise<void>>(async () => {});
 
-  // Update clock every minute
+  // ─── Clock & Auto-play ───
   useEffect(() => {
-    console.log('[DEBUG] App: Initializing clock effect');
-    const timer = setInterval(() => {
+    const tick = () => {
       const now = new Date();
       setCurrentTime(now);
-      
       const { currentHour: curr, nextHour: next } = getCurrentAndNextHour(now);
       setCurrentHour(curr);
       setNextHour(next);
-      
-      // Auto-play logic (always on, simulating live monastery)
+
       if (hasEntered && curr && !isPlaying && !isLoading) {
         const hourId = `${format(now, 'yyyy-MM-dd')}-${curr.name}`;
         if (lastPlayedHourRef.current !== hourId) {
-          // Check if we are within the first 5 minutes of the hour
           const currentMinutes = now.getMinutes();
           if (currentMinutes < 5) {
-            console.log(`[DEBUG] App: Auto-playing hour ${curr.name}`);
             lastPlayedHourRef.current = hourId;
-            playHour(curr);
+            playHourRef.current(curr);
           }
         }
       }
-    }, 60000);
+    };
 
-    // Initial setup
-    const { currentHour: curr, nextHour: next } = getCurrentAndNextHour(new Date());
-    console.log('[DEBUG] App: Initial hour calculation', { curr: curr?.name, next: next?.name });
-    setCurrentHour(curr);
-    setNextHour(next);
-
+    tick();
+    const timer = setInterval(tick, 60000);
     return () => clearInterval(timer);
   }, [hasEntered, isPlaying, isLoading]);
 
+  // ─── Audio Progress Timer ───
+  const startProgressTimer = useCallback(() => {
+    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+    progressTimerRef.current = setInterval(() => {
+      if (audioRef.current?.src && !speechCtrlRef.current) {
+        setAudioProgress(audioRef.current.currentTime);
+        setAudioDuration(audioRef.current.duration || 0);
+      } else if (speechCtrlRef.current) {
+        setAudioProgress(speechCtrlRef.current.getCurrentTime());
+        setAudioDuration(speechCtrlRef.current.getDuration());
+      }
+    }, 250);
+  }, []);
+
+  const stopProgressTimer = useCallback(() => {
+    if (progressTimerRef.current) {
+      clearInterval(progressTimerRef.current);
+      progressTimerRef.current = null;
+    }
+  }, []);
+
+  // ─── Enter Chapel ───
   const handleEnter = () => {
-    console.log('[DEBUG] App: handleEnter called');
     setHasEntered(true);
     initResonator(!isMuted);
     if (currentHour) {
       const now = new Date();
       const hourId = `${format(now, 'yyyy-MM-dd')}-${currentHour.name}`;
       lastPlayedHourRef.current = hourId;
-      console.log(`[DEBUG] App: Entering with hour ${currentHour.name}`);
       playHour(currentHour, true);
     }
   };
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    console.log('[DEBUG] App: Setting up keyboard shortcuts');
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!hasEntered) return;
-      if (e.target instanceof HTMLTextAreaElement) return;
-
-      switch (e.key) {
-        case ' ':
-          e.preventDefault();
-          togglePlayPause();
-          break;
-        case 'm':
-        case 'M':
-          toggleMute();
-          break;
-        case 'n':
-        case 'N':
-          e.preventDefault();
-          notebookRef.current?.focus();
-          break;
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [hasEntered, isPlaying, isLoading, isMuted]);
-
+  // ─── Play Hour ───
   const playHour = async (hour: LiturgicalHour, fadeIn: boolean = false) => {
-    console.log(`[DEBUG] App: playHour started for ${hour.name}`);
-    if (isPlaying) {
-      console.log('[DEBUG] App: playHour aborted - already playing');
-      return;
-    }
+    if (isPlaying || isLoading) return;
     setIsLoading(true);
     setPrayerText('');
     setError(null);
-    
+    setLoadingMessage('Preparing your prayer...');
+
+    // Clean up any previous speech
+    speechCtrlRef.current?.stop();
+    speechCtrlRef.current = null;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = '';
+    }
+
     try {
-      // 1. Generate Text
-      console.log('[DEBUG] App: Generating prayer text...');
-      const text = await generatePrayerText(hour.name, new Date());
-      console.log('[DEBUG] App: Prayer text generated (length):', text.length);
+      const now = new Date();
+      const dateStr = format(now, 'yyyy-MM-dd');
+
+      // 1. Get text (cached, Gemini, or fallback)
+      setLoadingMessage('Finding the words...');
+      const text = await generatePrayerText(hour.name, now);
       setPrayerText(text);
 
-      // 2. Generate Audio
-      console.log('[DEBUG] App: Generating prayer audio...');
-      const audioBase64 = await generatePrayerAudio(text);
-      console.log('[DEBUG] App: Audio generated (base64 length):', audioBase64.length);
-      const audioUrl = `data:audio/wav;base64,${audioBase64}`;
-      
-      if (audioRef.current) {
-        audioRef.current.src = audioUrl;
-        audioRef.current.muted = isMuted;
-        if (fadeIn) {
-          audioRef.current.volume = 0;
+      // 2. Check for cached audio URL
+      setLoadingMessage('Preparing the reading...');
+      const cachedUrl = await getCachedAudio(hour.name, dateStr);
+      let audioSrc: string | null = cachedUrl;
+      let audioModeResult: 'gemini' | 'speech' = 'gemini';
+      let speechCtrl: SpeechController | null = null;
+
+      if (!audioSrc) {
+        // Generate new audio
+        const audioResult = await generateAudioOrFallback(text);
+        if (audioResult.mode === 'gemini') {
+          // Upload to Firebase Storage
+          setLoadingMessage('Saving the reading...');
+          try {
+            const blob = base64ToBlob(audioResult.base64);
+            const url = await uploadAudio(`audio/${dateStr}/${hour.name}.wav`, blob);
+            await setCachedAudio(hour.name, dateStr, url);
+            audioSrc = url;
+          } catch (uploadErr) {
+            console.warn('[Cathedral] Storage upload failed, playing from memory:', uploadErr);
+            audioSrc = `data:audio/wav;base64,${audioResult.base64}`;
+          }
         } else {
-          audioRef.current.volume = 1;
+          audioModeResult = 'speech';
+          speechCtrl = audioResult.controller;
         }
       }
 
-      // 3. Play Bell
+      // 3. Play bell
       if (!isMuted) {
-        console.log('[DEBUG] App: Playing resonator bell');
         playResonatorBell();
       }
       if (bellRef.current && !isMuted) {
-        console.log('[DEBUG] App: Playing sample bell');
         bellRef.current.currentTime = 0;
         bellRef.current.volume = fadeIn ? 0.5 : 1;
         await bellRef.current.play();
       }
-      
-      // 4. Play Audio after a short delay for the bell
-      console.log('[DEBUG] App: Scheduling audio playback');
-      setTimeout(async () => {
-        if (audioRef.current) {
-          console.log('[DEBUG] App: Starting audio playback');
+
+      // 4. Schedule prayer playback after bell
+      setTimeout(() => {
+        if (audioModeResult === 'gemini' && audioSrc && audioRef.current) {
+          setAudioMode('gemini');
+          audioRef.current.src = audioSrc;
+          audioRef.current.muted = isMuted;
+          audioRef.current.volume = fadeIn ? 0 : 1;
           setIsPlaying(true);
           setIsLoading(false);
           startResonator();
-          await audioRef.current.play();
-
-          if (fadeIn) {
-            let vol = 0;
-            const fadeInterval = setInterval(() => {
-              vol += 0.05;
-              if (vol >= 1) {
-                if (audioRef.current) audioRef.current.volume = 1;
-                clearInterval(fadeInterval);
-              } else {
-                if (audioRef.current) audioRef.current.volume = vol;
-              }
-            }, 250);
-          }
+          startProgressTimer();
+          audioRef.current.play().then(() => {
+            if (fadeIn && audioRef.current) {
+              let vol = 0;
+              const fadeInterval = setInterval(() => {
+                vol += 0.05;
+                if (vol >= 1) {
+                  if (audioRef.current) audioRef.current.volume = 1;
+                  clearInterval(fadeInterval);
+                } else {
+                  if (audioRef.current) audioRef.current.volume = vol;
+                }
+              }, 250);
+            }
+          });
+        } else if (speechCtrl) {
+          setAudioMode('speech');
+          speechCtrlRef.current = speechCtrl;
+          speechCtrl.onPlay = () => {
+            setIsPlaying(true);
+            startResonator();
+            startProgressTimer();
+          };
+          speechCtrl.onEnd = () => {
+            setIsPlaying(false);
+            stopResonator();
+            stopProgressTimer();
+          };
+          speechCtrl.onPause = () => {
+            setIsPlaying(false);
+            stopResonator();
+          };
+          setIsPlaying(true);
+          setIsLoading(false);
+          speechCtrl.play();
         }
-      }, 4000);
-      
+      }, 3500);
     } catch (err) {
-      console.error('[DEBUG] App: playHour CRITICAL ERROR:', err);
-      setError('The monks are in silent contemplation. Please try again.');
+      console.error('playHour error:', err);
+      setError('Something went wrong. Please press the button to try again.');
       setIsLoading(false);
     }
   };
+  playHourRef.current = playHour;
 
+  // ─── Toggle Play / Pause ───
   const togglePlayPause = useCallback(() => {
-    if (!audioRef.current) return;
-
-    if (isPlaying) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-      stopResonator();
-    } else if (audioRef.current.src) {
-      audioRef.current.play();
-      setIsPlaying(true);
-      startResonator();
+    if (audioMode === 'gemini' && audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause();
+        setIsPlaying(false);
+        stopResonator();
+        stopProgressTimer();
+      } else if (audioRef.current.src) {
+        audioRef.current.play();
+        setIsPlaying(true);
+        startResonator();
+        startProgressTimer();
+      } else if (currentHour) {
+        playHour(currentHour);
+      }
+    } else if (audioMode === 'speech' && speechCtrlRef.current) {
+      if (isPlaying) {
+        speechCtrlRef.current.pause();
+        setIsPlaying(false);
+        stopResonator();
+        stopProgressTimer();
+      } else {
+        speechCtrlRef.current.play();
+        setIsPlaying(true);
+        startResonator();
+        startProgressTimer();
+      }
     } else if (currentHour) {
       playHour(currentHour);
     }
-  }, [isPlaying, currentHour, startResonator, stopResonator]);
+  }, [isPlaying, currentHour, audioMode, startResonator, stopResonator, startProgressTimer, stopProgressTimer]);
 
+  // ─── Toggle Mute ───
   const toggleMute = useCallback(() => {
     setIsMuted(prev => {
       const next = !prev;
@@ -262,7 +309,17 @@ export default function App() {
     });
   }, []);
 
-  // Console Watermark
+  // ─── Scrubber Click ───
+  const handleScrub = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct = (e.clientX - rect.left) / rect.width;
+    if (audioMode === 'gemini' && audioRef.current && audioDuration > 0) {
+      audioRef.current.currentTime = pct * audioDuration;
+    }
+    // Web Speech doesn't support seeking
+  }, [audioMode, audioDuration]);
+
+  // ─── Console Watermark ───
   useEffect(() => {
     console.log(
       "%c ✠ MONASTIC HOURS %c by GATRIVI \n%cOriginal work at gatrivi.com | @gatrivi on socials",
@@ -272,49 +329,53 @@ export default function App() {
     );
   }, []);
 
+  // ─── Landing Screen ───
   if (!hasEntered) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6 relative cursor-pointer" onClick={handleEnter}>
-        <div style={{ position: 'fixed', top: 10, right: 10, background: 'rgba(0,255,0,0.8)', color: 'black', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', zIndex: 9999, fontWeight: 'bold' }}>
-          JS ACTIVE
-        </div>
-        <div className="atmosphere"></div>
-        <motion.div 
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 relative">
+        <div className="atmosphere" />
+        <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 2 }}
-          className="text-center space-y-8 z-10"
+          className="text-center space-y-10 z-10 max-w-xl"
         >
-          <h1 className="font-serif text-5xl md:text-7xl font-light tracking-widest text-[var(--color-monastery-accent)]">
+          <h1 className="font-serif text-6xl md:text-8xl font-light tracking-widest text-[var(--color-monastery-accent)]">
             Monastic Hours
           </h1>
-          <p className="text-sm uppercase tracking-[0.3em] opacity-60">
-            Enter the Chapel
+          <p className="text-lg md:text-xl uppercase tracking-[0.3em] opacity-70">
+            A Chapel in Your Pocket
           </p>
-          <motion.div 
-            animate={{ opacity: [0.3, 1, 0.3] }}
-            transition={{ repeat: Infinity, duration: 3 }}
-            className="mt-12 opacity-50"
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={handleEnter}
+            className="mt-8 px-12 py-5 rounded-full border-2 border-[var(--color-monastery-accent)] text-[var(--color-monastery-accent)] text-xl md:text-2xl font-serif tracking-wider hover:bg-[var(--color-monastery-accent)] hover:text-black transition-colors cursor-pointer"
           >
-            Click anywhere to begin
-          </motion.div>
+            Enter the Chapel
+          </motion.button>
+          <motion.p
+            animate={{ opacity: [0.4, 0.8, 0.4] }}
+            transition={{ repeat: Infinity, duration: 4 }}
+            className="text-sm opacity-50 pt-4"
+          >
+            Press the button to begin
+          </motion.p>
         </motion.div>
       </div>
     );
   }
 
+  // ─── Main Screen ───
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 relative">
-      <div style={{ position: 'fixed', top: 10, right: 10, background: 'rgba(0,255,0,0.8)', color: 'black', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', zIndex: 9999, fontWeight: 'bold' }}>
-        JS ACTIVE
-      </div>
-      <div className="atmosphere"></div>
-      
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 md:p-6 relative">
+      <div className="atmosphere" />
+
       {/* Hidden Audio Elements */}
       <audio ref={bellRef} src={BELL_SOUND_URL} preload="auto" />
-      <audio 
-        ref={audioRef} 
-        onEnded={() => { setIsPlaying(false); stopResonator(); }} 
+      <audio
+        ref={audioRef}
+        onEnded={() => { setIsPlaying(false); stopResonator(); stopProgressTimer(); }}
         onPause={() => setIsPlaying(false)}
         onPlay={() => setIsPlaying(true)}
         onTimeUpdate={(e) => {
@@ -327,34 +388,35 @@ export default function App() {
         onLoadedMetadata={(e) => setAudioDuration(e.currentTarget.duration || 0)}
       />
 
-      <main className="w-full max-w-5xl flex flex-col gap-8 z-10">
-        
+      <main className="w-full max-w-6xl flex flex-col gap-6 md:gap-8 z-10">
+
         {/* Header / Clock */}
         <header className="text-center space-y-2">
-          <motion.h1 
+          <motion.h1
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="font-serif text-5xl md:text-7xl font-light tracking-widest text-[var(--color-monastery-accent)]"
+            className="font-serif text-6xl md:text-8xl font-light tracking-widest text-[var(--color-monastery-accent)]"
           >
             {format(currentTime, 'HH:mm')}
           </motion.h1>
-          <motion.p 
+          <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.2 }}
-            className="text-xs uppercase tracking-[0.3em] opacity-60"
+            className="text-base md:text-lg uppercase tracking-[0.3em] opacity-70"
           >
             {format(currentTime, 'EEEE, MMMM do')}
           </motion.p>
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
-          
-          {/* Left Column: Schedule & Info */}
+
+          {/* Left Column: Hours */}
           <div className="flex flex-col gap-6">
+            {/* Current Hour */}
             <div className="glass-panel p-6 rounded-2xl flex flex-col justify-between relative overflow-hidden">
-              <p className="text-xs uppercase tracking-widest opacity-50 mb-2 flex items-center gap-2 z-10">
-                <Clock size={14} /> Current Hour
+              <p className="text-sm uppercase tracking-widest opacity-60 mb-3 flex items-center gap-2 z-10">
+                <Clock size={18} /> Now Praying
               </p>
               <AnimatePresence mode="wait">
                 <motion.div
@@ -366,18 +428,19 @@ export default function App() {
                   className="flex flex-col justify-between h-full"
                 >
                   <div>
-                    <h2 className="font-serif text-3xl text-[var(--color-monastery-accent)]">{currentHour?.name || '...'}</h2>
-                    <p className="text-sm opacity-70 mt-1">{currentHour?.description}</p>
+                    <h2 className="font-serif text-4xl md:text-5xl text-[var(--color-monastery-accent)]">{currentHour?.name || '...'}</h2>
+                    <p className="text-base md:text-lg opacity-80 mt-2">{currentHour?.description}</p>
                   </div>
                   <div className="mt-4 flex items-center justify-between">
-                    <span className="font-mono text-sm opacity-50">{currentHour?.timeString}</span>
+                    <span className="font-mono text-base opacity-60">{currentHour?.timeString}</span>
                   </div>
                 </motion.div>
               </AnimatePresence>
             </div>
 
-            <div className="glass-panel p-6 rounded-2xl flex flex-col justify-between opacity-70 relative overflow-hidden">
-              <p className="text-xs uppercase tracking-widest opacity-50 mb-2 z-10">Next Hour</p>
+            {/* Next Hour */}
+            <div className="glass-panel p-6 rounded-2xl flex flex-col justify-between opacity-80 relative overflow-hidden">
+              <p className="text-sm uppercase tracking-widest opacity-60 mb-3 z-10">Coming Next</p>
               <AnimatePresence mode="wait">
                 <motion.div
                   key={nextHour?.name || 'empty'}
@@ -388,137 +451,150 @@ export default function App() {
                   className="flex flex-col justify-between h-full"
                 >
                   <div>
-                    <h2 className="font-serif text-2xl">{nextHour?.name || '...'}</h2>
-                    <p className="text-sm opacity-70 mt-1">{nextHour?.description}</p>
+                    <h2 className="font-serif text-3xl md:text-4xl">{nextHour?.name || '...'}</h2>
+                    <p className="text-base opacity-70 mt-2">{nextHour?.description}</p>
                   </div>
                   <div className="mt-4 flex items-center justify-between">
-                    <span className="font-mono text-sm opacity-50">{nextHour?.timeString}</span>
+                    <span className="font-mono text-base opacity-60">{nextHour?.timeString}</span>
                   </div>
                 </motion.div>
               </AnimatePresence>
             </div>
 
-            <button 
+            {/* Schedule Toggle */}
+            <button
               onClick={() => setShowSchedule(!showSchedule)}
-              className="glass-panel p-4 rounded-xl text-xs uppercase tracking-widest hover:text-[var(--color-monastery-accent)] transition-colors text-center"
+              className="glass-panel p-5 rounded-xl text-base uppercase tracking-widest hover:text-[var(--color-monastery-accent)] transition-colors text-center cursor-pointer"
             >
-              {showSchedule ? 'Hide Schedule' : 'View Full Schedule'}
+              {showSchedule ? 'Hide Daily Schedule' : 'View Daily Schedule'}
             </button>
           </div>
 
-          {/* Middle Column: Player & Text */}
+          {/* Middle Column: Player & Prayer */}
           <div className="lg:col-span-2 flex flex-col gap-6">
-            
+
             {/* Player Controls */}
-            <div className="glass-panel p-4 rounded-3xl flex flex-col items-center gap-4 w-full">
-              <div className="flex items-center justify-center gap-8">
-                <button onClick={toggleMute} className="hover:text-[var(--color-monastery-accent)] transition-colors" title="Mute (M)">
-                  {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+            <div className="glass-panel p-6 rounded-3xl flex flex-col items-center gap-5 w-full">
+              <div className="flex items-center justify-center gap-6 md:gap-10">
+                {/* Mute */}
+                <button
+                  onClick={toggleMute}
+                  className="flex flex-col items-center gap-2 hover:text-[var(--color-monastery-accent)] transition-colors cursor-pointer min-w-[64px]"
+                  title={isMuted ? 'Unmute' : 'Mute'}
+                >
+                  {isMuted ? <VolumeX size={28} /> : <Volume2 size={28} />}
+                  <span className="text-xs uppercase tracking-wider opacity-70">{isMuted ? 'Muted' : 'Sound'}</span>
                 </button>
-                
-                <button 
+
+                {/* Play / Pause */}
+                <button
                   onClick={togglePlayPause}
                   disabled={isLoading}
-                  className="w-16 h-16 rounded-full border border-[var(--color-monastery-accent)] flex items-center justify-center text-[var(--color-monastery-accent)] hover:bg-[var(--color-monastery-accent)] hover:text-black transition-all disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-[var(--color-monastery-accent)]"
-                  title="Play / Pause (Space)"
+                  className="w-20 h-20 md:w-24 md:h-24 rounded-full border-2 border-[var(--color-monastery-accent)] flex items-center justify-center text-[var(--color-monastery-accent)] hover:bg-[var(--color-monastery-accent)] hover:text-black transition-all disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-[var(--color-monastery-accent)] cursor-pointer"
+                  title="Play or Pause"
                 >
                   {isLoading ? (
-                    <motion.div 
-                      animate={{ rotate: 360 }} 
-                      transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ repeat: Infinity, duration: 2, ease: 'linear' }}
                     >
-                      <Bell size={24} />
+                      <Bell size={32} />
                     </motion.div>
                   ) : isPlaying ? (
-                    <Pause size={24} />
+                    <Pause size={32} />
                   ) : (
-                    <Play size={24} className="ml-1" />
+                    <Play size={32} className="ml-1" />
                   )}
                 </button>
 
-                <button 
+                {/* Skip */}
+                <button
                   onClick={() => nextHour && playHour(nextHour)}
                   disabled={isLoading || isPlaying}
-                  className="hover:text-[var(--color-monastery-accent)] transition-colors disabled:opacity-50"
-                  title="Skip to next hour"
+                  className="flex flex-col items-center gap-2 hover:text-[var(--color-monastery-accent)] transition-colors disabled:opacity-50 cursor-pointer min-w-[64px]"
+                  title="Next Hour"
                 >
-                  <SkipForward size={20} />
+                  <SkipForward size={28} />
+                  <span className="text-xs uppercase tracking-wider opacity-70">Next</span>
                 </button>
               </div>
 
               {/* Audio Progress */}
               {audioDuration > 0 && (
-                <div className="w-full flex items-center gap-3 px-4">
-                  <span className="text-xs font-mono opacity-50 w-10 text-right">
+                <div className="w-full flex items-center gap-3 px-2 md:px-4">
+                  <span className="text-sm font-mono opacity-60 w-12 text-right">
                     {Math.floor(audioProgress / 60)}:{String(Math.floor(audioProgress % 60)).padStart(2, '0')}
                   </span>
-                  <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden cursor-pointer"
-                    onClick={(e) => {
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      const pct = (e.clientX - rect.left) / rect.width;
-                      if (audioRef.current) {
-                        audioRef.current.currentTime = pct * audioDuration;
-                      }
-                    }}
+                  <div
+                    className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden cursor-pointer"
+                    onClick={handleScrub}
                   >
-                    <motion.div 
+                    <motion.div
                       className="h-full bg-[var(--color-monastery-accent)]"
                       style={{ width: `${(audioProgress / audioDuration) * 100}%` }}
                     />
                   </div>
-                  <span className="text-xs font-mono opacity-50 w-10">
+                  <span className="text-sm font-mono opacity-60 w-12">
                     {Math.floor(audioDuration / 60)}:{String(Math.floor(audioDuration % 60)).padStart(2, '0')}
                   </span>
                 </div>
               )}
+
+              {/* Loading / Status */}
+              {isLoading && (
+                <p className="text-sm opacity-70 animate-pulse">{loadingMessage}</p>
+              )}
+              {audioMode === 'speech' && !isLoading && (
+                <p className="text-xs opacity-50 uppercase tracking-wider">Speaking in your browser</p>
+              )}
             </div>
 
             {/* Prayer Text Display */}
-            <div className="glass-panel p-8 rounded-2xl flex-grow flex flex-col relative">
+            <div className="glass-panel p-6 md:p-8 rounded-2xl flex-grow flex flex-col relative">
               <div className="absolute top-4 right-4 opacity-20 pointer-events-none">
                 <SacredDrawing symbolKey="cross" progress={isPlaying ? 0.8 : 0.3} size={60} />
               </div>
-              <h3 className="text-xs uppercase tracking-widest opacity-50 mb-4 flex items-center gap-2">
-                <BookOpen size={14} /> Liturgy Text
+              <h3 className="text-sm uppercase tracking-widest opacity-60 mb-4 flex items-center gap-2">
+                <BookOpen size={18} /> Prayer
               </h3>
-              <div className="flex-grow overflow-y-auto max-h-[40vh] pr-2">
+              <div className="flex-grow overflow-y-auto max-h-[50vh] pr-2">
                 <AnimatePresence mode="wait">
                   {error ? (
-                    <motion.div 
+                    <motion.div
                       key="error"
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
-                      className="h-full flex flex-col items-center justify-center gap-3 text-center"
+                      className="h-full flex flex-col items-center justify-center gap-4 text-center"
                     >
-                      <AlertCircle size={32} className="text-red-400 opacity-70" />
-                      <p className="font-serif italic opacity-60">{error}</p>
-                      <button 
+                      <AlertCircle size={40} className="text-red-400 opacity-80" />
+                      <p className="font-serif text-xl italic opacity-80">{error}</p>
+                      <button
                         onClick={() => currentHour && playHour(currentHour)}
-                        className="mt-2 text-xs uppercase tracking-widest hover:text-[var(--color-monastery-accent)] transition-colors"
+                        className="mt-2 px-6 py-3 rounded-full border border-[var(--color-monastery-accent)] text-[var(--color-monastery-accent)] hover:bg-[var(--color-monastery-accent)] hover:text-black transition-colors text-sm uppercase tracking-widest cursor-pointer"
                       >
                         Try Again
                       </button>
                     </motion.div>
                   ) : prayerText ? (
-                    <motion.div 
+                    <motion.div
                       key="text"
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
-                      className="font-serif text-lg leading-relaxed space-y-4 text-center markdown-body"
+                      className="font-serif text-xl md:text-2xl leading-relaxed space-y-5 text-center markdown-body"
                     >
                       <Markdown>{prayerText}</Markdown>
                     </motion.div>
                   ) : (
-                    <motion.div 
+                    <motion.div
                       key="empty"
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
-                      className="h-full flex items-center justify-center opacity-30 font-serif italic"
+                      className="h-full flex items-center justify-center opacity-40 font-serif italic text-2xl"
                     >
-                      The chapel is quiet.
+                      The chapel is quiet. Press the play button to begin.
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -531,24 +607,24 @@ export default function App() {
         {/* Bottom Row: Notebook & Schedule */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Notebook />
-          
+
           <AnimatePresence>
             {showSchedule && (
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
                 className="glass-panel p-6 rounded-2xl overflow-hidden"
               >
-                <h3 className="text-xs uppercase tracking-widest opacity-50 mb-4">Daily Rhythm</h3>
+                <h3 className="text-sm uppercase tracking-widest opacity-60 mb-4">Daily Rhythm</h3>
                 <div className="space-y-3">
                   {HOURS_SCHEDULE.map((h) => (
-                    <div key={h.name} className={`flex justify-between items-center p-2 rounded ${currentHour?.name === h.name ? 'bg-[var(--color-monastery-accent)] text-black' : 'hover:bg-white/5'}`}>
+                    <div key={h.name} className={`flex justify-between items-center p-3 rounded-lg ${currentHour?.name === h.name ? 'bg-[var(--color-monastery-accent)] text-black' : 'hover:bg-white/5'}`}>
                       <div>
-                        <span className="font-serif font-bold mr-3">{h.name}</span>
-                        <span className="text-xs opacity-70">{h.description}</span>
+                        <span className="font-serif font-bold text-lg mr-3">{h.name}</span>
+                        <span className="text-sm opacity-80">{h.description}</span>
                       </div>
-                      <span className="font-mono text-sm">{h.timeString}</span>
+                      <span className="font-mono text-base">{h.timeString}</span>
                     </div>
                   ))}
                 </div>
@@ -557,12 +633,12 @@ export default function App() {
           </AnimatePresence>
         </div>
 
-        {/* Branding Watermark Footer */}
-        <footer className="mt-8 pt-8 border-t border-white/5 flex flex-col items-center gap-4 opacity-30 hover:opacity-100 transition-opacity duration-500">
-          <p className="text-xs uppercase tracking-[0.4em] font-serif">
+        {/* Footer */}
+        <footer className="mt-6 pt-6 border-t border-white/5 flex flex-col items-center gap-4 opacity-40 hover:opacity-100 transition-opacity duration-500">
+          <p className="text-sm uppercase tracking-[0.4em] font-serif">
             Built by <a href="https://gatrivi.com" target="_blank" rel="noopener noreferrer" className="text-[var(--color-monastery-accent)] hover:underline">Gatrivi</a>
           </p>
-          <div className="flex gap-6 text-[10px] uppercase tracking-widest">
+          <div className="flex gap-6 text-xs uppercase tracking-widest">
             <a href="https://x.com/gatrivi" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-monastery-accent)] transition-colors">Twitter</a>
             <a href="https://reddit.com/u/gatrivi" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-monastery-accent)] transition-colors">Reddit</a>
             <span className="cursor-default">✠</span>

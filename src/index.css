@@ -4,11 +4,15 @@
 @theme {
   --font-serif: "Cormorant Garamond", ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  
+
   --color-monastery-bg: #0a0502;
   --color-monastery-accent: #d4af37; /* Gold */
-  --color-monastery-text: #e0d8d0;
-  --color-monastery-muted: rgba(224, 216, 208, 0.4);
+  --color-monastery-text: #e8e0d8;
+  --color-monastery-muted: rgba(232, 224, 216, 0.45);
+}
+
+html {
+  font-size: 18px;
 }
 
 body {
@@ -16,6 +20,8 @@ body {
   color: var(--color-monastery-text);
   font-family: var(--font-sans);
   overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .font-serif {
@@ -23,9 +29,9 @@ body {
 }
 
 .glass-panel {
-  background: rgba(20, 15, 10, 0.6);
+  background: rgba(24, 18, 12, 0.65);
   backdrop-filter: blur(20px);
-  border: 1px solid rgba(212, 175, 55, 0.1);
+  border: 1px solid rgba(212, 175, 55, 0.12);
 }
 
 /* Atmospheric background */
@@ -36,18 +42,18 @@ body {
   width: 100vw;
   height: 100vh;
   z-index: -1;
-  background-image: 
+  background-image:
     radial-gradient(circle at 50% 30%, rgba(42, 21, 16, 0.8) 0%, rgba(10, 5, 2, 0.95) 70%),
     url('https://picsum.photos/seed/monastery/1920/1080');
   background-size: cover;
   background-position: center;
   filter: blur(8px);
-  transform: scale(1.05); /* Prevent blur edges from showing */
+  transform: scale(1.05);
 }
 
 /* Custom scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -65,12 +71,40 @@ body {
   color: var(--color-monastery-accent);
   font-weight: 600;
   margin-top: 1.5rem;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.75rem;
+  font-size: 1.4em;
 }
 .markdown-body p {
-  margin-bottom: 1rem;
+  margin-bottom: 1.25rem;
 }
 .markdown-body strong {
   color: var(--color-monastery-accent);
   font-weight: 600;
+}
+.markdown-body em {
+  opacity: 0.9;
+}
+
+/* Accessibility: ensure touch targets are large */
+button, a, [role="button"] {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Focus styles for keyboard navigation */
+button:focus-visible,
+a:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--color-monastery-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
