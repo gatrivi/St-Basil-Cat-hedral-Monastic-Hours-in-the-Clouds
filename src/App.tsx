@@ -52,6 +52,7 @@ function Notebook() {
 }
 
 export default function App() {
+  console.log('[DEBUG] App: Component Rendering');
   const [hasEntered, setHasEntered] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [currentHour, setCurrentHour] = useState<LiturgicalHour | null>(null);
@@ -73,6 +74,7 @@ export default function App() {
 
   // Update clock every minute
   useEffect(() => {
+    console.log('[DEBUG] App: Initializing clock effect');
     const timer = setInterval(() => {
       const now = new Date();
       setCurrentTime(now);
@@ -88,6 +90,7 @@ export default function App() {
           // Check if we are within the first 5 minutes of the hour
           const currentMinutes = now.getMinutes();
           if (currentMinutes < 5) {
+            console.log(`[DEBUG] App: Auto-playing hour ${curr.name}`);
             lastPlayedHourRef.current = hourId;
             playHour(curr);
           }
@@ -97,6 +100,7 @@ export default function App() {
 
     // Initial setup
     const { currentHour: curr, nextHour: next } = getCurrentAndNextHour(new Date());
+    console.log('[DEBUG] App: Initial hour calculation', { curr: curr?.name, next: next?.name });
     setCurrentHour(curr);
     setNextHour(next);
 
@@ -104,17 +108,20 @@ export default function App() {
   }, [hasEntered, isPlaying, isLoading]);
 
   const handleEnter = () => {
+    console.log('[DEBUG] App: handleEnter called');
     setHasEntered(true);
     if (currentHour) {
       const now = new Date();
       const hourId = `${format(now, 'yyyy-MM-dd')}-${currentHour.name}`;
       lastPlayedHourRef.current = hourId;
+      console.log(`[DEBUG] App: Entering with hour ${currentHour.name}`);
       playHour(currentHour, true);
     }
   };
 
   // Keyboard shortcuts
   useEffect(() => {
+    console.log('[DEBUG] App: Setting up keyboard shortcuts');
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!hasEntered) return;
       if (e.target instanceof HTMLTextAreaElement) return;
@@ -140,18 +147,26 @@ export default function App() {
   }, [hasEntered, isPlaying, isLoading, isMuted]);
 
   const playHour = async (hour: LiturgicalHour, fadeIn: boolean = false) => {
-    if (isPlaying) return;
+    console.log(`[DEBUG] App: playHour started for ${hour.name}`);
+    if (isPlaying) {
+      console.log('[DEBUG] App: playHour aborted - already playing');
+      return;
+    }
     setIsLoading(true);
     setPrayerText('');
     setError(null);
     
     try {
       // 1. Generate Text
+      console.log('[DEBUG] App: Generating prayer text...');
       const text = await generatePrayerText(hour.name, new Date());
+      console.log('[DEBUG] App: Prayer text generated (length):', text.length);
       setPrayerText(text);
 
       // 2. Generate Audio
+      console.log('[DEBUG] App: Generating prayer audio...');
       const audioBase64 = await generatePrayerAudio(text);
+      console.log('[DEBUG] App: Audio generated (base64 length):', audioBase64.length);
       const audioUrl = `data:audio/wav;base64,${audioBase64}`;
       
       if (audioRef.current) {
@@ -166,14 +181,17 @@ export default function App() {
 
       // 3. Play Bell
       if (bellRef.current && !isMuted) {
+        console.log('[DEBUG] App: Playing bell');
         bellRef.current.currentTime = 0;
         bellRef.current.volume = fadeIn ? 0.5 : 1;
         await bellRef.current.play();
       }
       
       // 4. Play Audio after a short delay for the bell
+      console.log('[DEBUG] App: Scheduling audio playback');
       setTimeout(async () => {
         if (audioRef.current) {
+          console.log('[DEBUG] App: Starting audio playback');
           setIsPlaying(true);
           setIsLoading(false);
           await audioRef.current.play();
@@ -195,7 +213,7 @@ export default function App() {
       }, 4000); // 4 seconds for the bell to ring out
       
     } catch (err) {
-      console.error('Failed to play hour:', err);
+      console.error('[DEBUG] App: playHour CRITICAL ERROR:', err);
       setError('The monks are in silent contemplation. Please try again.');
       setIsLoading(false);
     }
