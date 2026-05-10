@@ -35,6 +35,9 @@ console.log('[DEBUG] main.tsx: Root element found:', !!rootElement);
 if (!rootElement) {
   console.error('[DEBUG] main.tsx: CRITICAL - Root element not found in DOM');
 } else {
+  const statusCheck = document.getElementById('status-check');
+  if (statusCheck) statusCheck.style.display = 'none';
+  
   createRoot(rootElement).render(
     <StrictMode>
       <ErrorBoundary>

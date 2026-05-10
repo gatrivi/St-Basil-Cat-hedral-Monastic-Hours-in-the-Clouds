@@ -8,8 +8,20 @@
     <meta name="author" content="Gatrivi (gatrivi.com)" />
     <meta name="description" content="A digital monastic chapel for the Liturgy of the Hours. Created by Gatrivi." />
   </head>
-  <body>
+  <body style="background: #000; color: #fff;">
+    <div id="status-check" style="position: fixed; top: 0; left: 0; width: 100%; background: #333; color: #fff; text-align: center; font-family: monospace; font-size: 10px; z-index: 10000; padding: 2px;">
+      HTML LOADED (WAITING FOR REACT...)
+    </div>
     <div id="root"></div>
+    <script>
+      console.log('[DEBUG] index.html: Inline script execution started');
+      window.onload = function() {
+        console.log('[DEBUG] index.html: window.onload fired');
+        const root = document.getElementById('root');
+        if (root) console.log('[DEBUG] index.html: #root found');
+        else console.error('[DEBUG] index.html: #root NOT FOUND');
+      };
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
