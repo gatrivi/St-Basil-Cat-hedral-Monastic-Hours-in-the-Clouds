@@ -53,7 +53,16 @@ function Notebook() {
 
 export default function App() {
   console.log('[DEBUG] App: Component Rendering');
+  
+  useEffect(() => {
+    const bg = getComputedStyle(document.body).getPropertyValue('--color-monastery-bg');
+    console.log('[DEBUG] App: CSS Variable --color-monastery-bg:', bg || 'NOT FOUND');
+    const isTailwindLoaded = getComputedStyle(document.documentElement).getPropertyValue('--font-sans');
+    console.log('[DEBUG] App: Tailwind Font Sans loaded:', !!isTailwindLoaded);
+  }, []);
+
   const [hasEntered, setHasEntered] = useState(false);
+  // ... rest of state
   const [currentTime, setCurrentTime] = useState(new Date());
   const [currentHour, setCurrentHour] = useState<LiturgicalHour | null>(null);
   const [nextHour, setNextHour] = useState<LiturgicalHour | null>(null);
@@ -255,6 +264,9 @@ export default function App() {
   if (!hasEntered) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative cursor-pointer" onClick={handleEnter}>
+        <div style={{ position: 'fixed', top: 10, right: 10, background: 'rgba(0,255,0,0.8)', color: 'black', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', zIndex: 9999, fontWeight: 'bold' }}>
+          JS ACTIVE
+        </div>
         <div className="atmosphere"></div>
         <motion.div 
           initial={{ opacity: 0, scale: 0.9 }}
@@ -282,6 +294,9 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6 relative">
+      <div style={{ position: 'fixed', top: 10, right: 10, background: 'rgba(0,255,0,0.8)', color: 'black', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', zIndex: 9999, fontWeight: 'bold' }}>
+        JS ACTIVE
+      </div>
       <div className="atmosphere"></div>
       
       {/* Hidden Audio Elements */}
