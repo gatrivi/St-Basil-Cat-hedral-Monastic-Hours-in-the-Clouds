@@ -41,7 +41,7 @@ body {
   left: 0;
   width: 100vw;
   height: 100vh;
-  z-index: -1;
+  z-index: -2;
   background-image:
     radial-gradient(circle at 50% 30%, rgba(42, 21, 16, 0.8) 0%, rgba(10, 5, 2, 0.95) 70%),
     url('https://picsum.photos/seed/monastery/1920/1080');
@@ -49,6 +49,52 @@ body {
   background-position: center;
   filter: blur(8px);
   transform: scale(1.05);
+}
+
+/* Stained glass overlay */
+.stained-glass {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.25;
+  background:
+    /* Lead lines — vertical */
+    repeating-linear-gradient(90deg,
+      transparent 0px, transparent 98px,
+      rgba(10, 5, 2, 0.85) 98px, rgba(10, 5, 2, 0.85) 100px
+    ),
+    /* Lead lines — horizontal */
+    repeating-linear-gradient(0deg,
+      transparent 0px, transparent 148px,
+      rgba(10, 5, 2, 0.85) 148px, rgba(10, 5, 2, 0.85) 150px
+    ),
+    /* Colored panes — jewel tones */
+    repeating-linear-gradient(90deg,
+      rgba(180, 40, 40, 0.35) 0px, rgba(180, 40, 40, 0.35) 32px,
+      rgba(40, 80, 180, 0.30) 32px, rgba(40, 80, 180, 0.30) 64px,
+      rgba(40, 140, 80, 0.30) 64px, rgba(40, 140, 80, 0.30) 98px
+    ),
+    repeating-linear-gradient(0deg,
+      rgba(212, 175, 55, 0.25) 0px, rgba(212, 175, 55, 0.25) 48px,
+      rgba(120, 60, 160, 0.25) 48px, rgba(120, 60, 160, 0.25) 98px,
+      rgba(212, 175, 55, 0.25) 98px, rgba(212, 175, 55, 0.25) 150px
+    );
+  mix-blend-mode: overlay;
+}
+
+/* Subtle light shift on stained glass */
+@keyframes lightShift {
+  0% { opacity: 0.20; }
+  50% { opacity: 0.30; }
+  100% { opacity: 0.20; }
+}
+
+.stained-glass {
+  animation: lightShift 8s ease-in-out infinite;
 }
 
 /* Custom scrollbar */

@@ -334,6 +334,7 @@ export default function App() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative">
         <div className="atmosphere" />
+        <div className="stained-glass" />
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
