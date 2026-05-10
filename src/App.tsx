@@ -5,6 +5,8 @@ import { format } from 'date-fns';
 import Markdown from 'react-markdown';
 import { getCurrentAndNextHour, HOURS_SCHEDULE, LiturgicalHour } from './lib/hours';
 import { generatePrayerText, generatePrayerAudio } from './services/gemini';
+import { useCosmicResonator } from './sacred/useCosmicResonator';
+import { SacredDrawing } from './sacred/procedural-rose';
 
 // A simple bell sound (public domain/CC0)
 const BELL_SOUND_URL = 'https://upload.wikimedia.org/wikipedia/commons/b/b4/Bell-sound.ogg';
@@ -53,7 +55,9 @@ function Notebook() {
 
 export default function App() {
   console.log('[DEBUG] App: Component Rendering');
-  
+
+  const { init: initResonator, start: startResonator, stop: stopResonator, setProgress: setResonatorProgress, playBell: playResonatorBell } = useCosmicResonator();
+
   useEffect(() => {
     const bg = getComputedStyle(document.body).getPropertyValue('--color-monastery-bg');
     console.log('[DEBUG] App: CSS Variable --color-monastery-bg:', bg || 'NOT FOUND');
@@ -119,6 +123,7 @@ export default function App() {
   const handleEnter = () => {
     console.log('[DEBUG] App: handleEnter called');
     setHasEntered(true);
+    initResonator(!isMuted);
     if (currentHour) {
       const now = new Date();
       const hourId = `${format(now, 'yyyy-MM-dd')}-${currentHour.name}`;
@@ -189,8 +194,12 @@ export default function App() {
       }
 
       // 3. Play Bell
+      if (!isMuted) {
+        console.log('[DEBUG] App: Playing resonator bell');
+        playResonatorBell();
+      }
       if (bellRef.current && !isMuted) {
-        console.log('[DEBUG] App: Playing bell');
+        console.log('[DEBUG] App: Playing sample bell');
         bellRef.current.currentTime = 0;
         bellRef.current.volume = fadeIn ? 0.5 : 1;
         await bellRef.current.play();
@@ -203,10 +212,10 @@ export default function App() {
           console.log('[DEBUG] App: Starting audio playback');
           setIsPlaying(true);
           setIsLoading(false);
+          startResonator();
           await audioRef.current.play();
-          
+
           if (fadeIn) {
-            // Fade in over 5 seconds
             let vol = 0;
             const fadeInterval = setInterval(() => {
               vol += 0.05;
@@ -219,7 +228,7 @@ export default function App() {
             }, 250);
           }
         }
-      }, 4000); // 4 seconds for the bell to ring out
+      }, 4000);
       
     } catch (err) {
       console.error('[DEBUG] App: playHour CRITICAL ERROR:', err);
@@ -230,17 +239,19 @@ export default function App() {
 
   const togglePlayPause = useCallback(() => {
     if (!audioRef.current) return;
-    
+
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
+      stopResonator();
     } else if (audioRef.current.src) {
       audioRef.current.play();
       setIsPlaying(true);
+      startResonator();
     } else if (currentHour) {
       playHour(currentHour);
     }
-  }, [isPlaying, currentHour]);
+  }, [isPlaying, currentHour, startResonator, stopResonator]);
 
   const toggleMute = useCallback(() => {
     setIsMuted(prev => {
@@ -303,7 +314,7 @@ export default function App() {
       <audio ref={bellRef} src={BELL_SOUND_URL} preload="auto" />
       <audio 
         ref={audioRef} 
-        onEnded={() => setIsPlaying(false)} 
+        onEnded={() => { setIsPlaying(false); stopResonator(); }} 
         onPause={() => setIsPlaying(false)}
         onPlay={() => setIsPlaying(true)}
         onTimeUpdate={(e) => {
@@ -463,7 +474,10 @@ export default function App() {
             </div>
 
             {/* Prayer Text Display */}
-            <div className="glass-panel p-8 rounded-2xl flex-grow flex flex-col">
+            <div className="glass-panel p-8 rounded-2xl flex-grow flex flex-col relative">
+              <div className="absolute top-4 right-4 opacity-20 pointer-events-none">
+                <SacredDrawing symbolKey="cross" progress={isPlaying ? 0.8 : 0.3} size={60} />
+              </div>
               <h3 className="text-xs uppercase tracking-widest opacity-50 mb-4 flex items-center gap-2">
                 <BookOpen size={14} /> Liturgy Text
               </h3>
