@@ -1,6 +1,6 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Bell, Play, Pause, Volume2, VolumeX, SkipForward, BookOpen, Clock } from 'lucide-react';
+import { Bell, Play, Pause, Volume2, VolumeX, SkipForward, BookOpen, Clock, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import Markdown from 'react-markdown';
 import { getCurrentAndNextHour, HOURS_SCHEDULE, LiturgicalHour } from './lib/hours';
@@ -61,9 +61,13 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [audioProgress, setAudioProgress] = useState(0);
+  const [audioDuration, setAudioDuration] = useState(0);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const bellRef = useRef<HTMLAudioElement | null>(null);
+  const notebookRef = useRef<HTMLTextAreaElement | null>(null);
 
   const lastPlayedHourRef = useRef<string | null>(null);
 
@@ -109,10 +113,37 @@ export default function App() {
     }
   };
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!hasEntered) return;
+      if (e.target instanceof HTMLTextAreaElement) return;
+
+      switch (e.key) {
+        case ' ':
+          e.preventDefault();
+          togglePlayPause();
+          break;
+        case 'm':
+        case 'M':
+          toggleMute();
+          break;
+        case 'n':
+        case 'N':
+          e.preventDefault();
+          notebookRef.current?.focus();
+          break;
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [hasEntered, isPlaying, isLoading, isMuted]);
+
   const playHour = async (hour: LiturgicalHour, fadeIn: boolean = false) => {
     if (isPlaying) return;
     setIsLoading(true);
     setPrayerText('');
+    setError(null);
     
     try {
       // 1. Generate Text
@@ -163,14 +194,14 @@ export default function App() {
         }
       }, 4000); // 4 seconds for the bell to ring out
       
-    } catch (error) {
-      console.error('Failed to play hour:', error);
-      setPrayerText('The monks are in silent contemplation.');
+    } catch (err) {
+      console.error('Failed to play hour:', err);
+      setError('The monks are in silent contemplation. Please try again.');
       setIsLoading(false);
     }
   };
 
-  const togglePlayPause = () => {
+  const togglePlayPause = useCallback(() => {
     if (!audioRef.current) return;
     
     if (isPlaying) {
@@ -182,13 +213,26 @@ export default function App() {
     } else if (currentHour) {
       playHour(currentHour);
     }
-  };
+  }, [isPlaying, currentHour]);
 
-  const toggleMute = () => {
-    setIsMuted(!isMuted);
-    if (audioRef.current) audioRef.current.muted = !isMuted;
-    if (bellRef.current) bellRef.current.muted = !isMuted;
-  };
+  const toggleMute = useCallback(() => {
+    setIsMuted(prev => {
+      const next = !prev;
+      if (audioRef.current) audioRef.current.muted = next;
+      if (bellRef.current) bellRef.current.muted = next;
+      return next;
+    });
+  }, []);
+
+  // Console Watermark
+  useEffect(() => {
+    console.log(
+      "%c ✠ MONASTIC HOURS %c by GATRIVI \n%cOriginal work at gatrivi.com | @gatrivi on socials",
+      "color: #d4af37; font-size: 20px; font-weight: bold; font-family: serif;",
+      "color: #888; font-size: 14px; font-family: serif;",
+      "color: #666; font-size: 12px; font-style: italic;"
+    );
+  }, []);
 
   if (!hasEntered) {
     return (
@@ -229,6 +273,14 @@ export default function App() {
         onEnded={() => setIsPlaying(false)} 
         onPause={() => setIsPlaying(false)}
         onPlay={() => setIsPlaying(true)}
+        onTimeUpdate={(e) => {
+          const audio = e.currentTarget;
+          if (audio.duration) {
+            setAudioProgress(audio.currentTime);
+            setAudioDuration(audio.duration);
+          }
+        }}
+        onLoadedMetadata={(e) => setAudioDuration(e.currentTarget.duration || 0)}
       />
 
       <main className="w-full max-w-5xl flex flex-col gap-8 z-10">
@@ -314,38 +366,67 @@ export default function App() {
           <div className="lg:col-span-2 flex flex-col gap-6">
             
             {/* Player Controls */}
-            <div className="glass-panel p-4 rounded-3xl flex items-center justify-center gap-8 w-full">
-              <button onClick={toggleMute} className="hover:text-[var(--color-monastery-accent)] transition-colors">
-                {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
-              </button>
-              
-              <button 
-                onClick={togglePlayPause}
-                disabled={isLoading}
-                className="w-16 h-16 rounded-full border border-[var(--color-monastery-accent)] flex items-center justify-center text-[var(--color-monastery-accent)] hover:bg-[var(--color-monastery-accent)] hover:text-black transition-all disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-[var(--color-monastery-accent)]"
-              >
-                {isLoading ? (
-                  <motion.div 
-                    animate={{ rotate: 360 }} 
-                    transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
-                  >
-                    <Bell size={24} />
-                  </motion.div>
-                ) : isPlaying ? (
-                  <Pause size={24} />
-                ) : (
-                  <Play size={24} className="ml-1" />
-                )}
-              </button>
+            <div className="glass-panel p-4 rounded-3xl flex flex-col items-center gap-4 w-full">
+              <div className="flex items-center justify-center gap-8">
+                <button onClick={toggleMute} className="hover:text-[var(--color-monastery-accent)] transition-colors" title="Mute (M)">
+                  {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+                </button>
+                
+                <button 
+                  onClick={togglePlayPause}
+                  disabled={isLoading}
+                  className="w-16 h-16 rounded-full border border-[var(--color-monastery-accent)] flex items-center justify-center text-[var(--color-monastery-accent)] hover:bg-[var(--color-monastery-accent)] hover:text-black transition-all disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-[var(--color-monastery-accent)]"
+                  title="Play / Pause (Space)"
+                >
+                  {isLoading ? (
+                    <motion.div 
+                      animate={{ rotate: 360 }} 
+                      transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
+                    >
+                      <Bell size={24} />
+                    </motion.div>
+                  ) : isPlaying ? (
+                    <Pause size={24} />
+                  ) : (
+                    <Play size={24} className="ml-1" />
+                  )}
+                </button>
 
-              <button 
-                onClick={() => nextHour && playHour(nextHour)}
-                disabled={isLoading || isPlaying}
-                className="hover:text-[var(--color-monastery-accent)] transition-colors disabled:opacity-50"
-                title="Skip to next hour"
-              >
-                <SkipForward size={20} />
-              </button>
+                <button 
+                  onClick={() => nextHour && playHour(nextHour)}
+                  disabled={isLoading || isPlaying}
+                  className="hover:text-[var(--color-monastery-accent)] transition-colors disabled:opacity-50"
+                  title="Skip to next hour"
+                >
+                  <SkipForward size={20} />
+                </button>
+              </div>
+
+              {/* Audio Progress */}
+              {audioDuration > 0 && (
+                <div className="w-full flex items-center gap-3 px-4">
+                  <span className="text-xs font-mono opacity-50 w-10 text-right">
+                    {Math.floor(audioProgress / 60)}:{String(Math.floor(audioProgress % 60)).padStart(2, '0')}
+                  </span>
+                  <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden cursor-pointer"
+                    onClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const pct = (e.clientX - rect.left) / rect.width;
+                      if (audioRef.current) {
+                        audioRef.current.currentTime = pct * audioDuration;
+                      }
+                    }}
+                  >
+                    <motion.div 
+                      className="h-full bg-[var(--color-monastery-accent)]"
+                      style={{ width: `${(audioProgress / audioDuration) * 100}%` }}
+                    />
+                  </div>
+                  <span className="text-xs font-mono opacity-50 w-10">
+                    {Math.floor(audioDuration / 60)}:{String(Math.floor(audioDuration % 60)).padStart(2, '0')}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Prayer Text Display */}
@@ -355,7 +436,24 @@ export default function App() {
               </h3>
               <div className="flex-grow overflow-y-auto max-h-[40vh] pr-2">
                 <AnimatePresence mode="wait">
-                  {prayerText ? (
+                  {error ? (
+                    <motion.div 
+                      key="error"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="h-full flex flex-col items-center justify-center gap-3 text-center"
+                    >
+                      <AlertCircle size={32} className="text-red-400 opacity-70" />
+                      <p className="font-serif italic opacity-60">{error}</p>
+                      <button 
+                        onClick={() => currentHour && playHour(currentHour)}
+                        className="mt-2 text-xs uppercase tracking-widest hover:text-[var(--color-monastery-accent)] transition-colors"
+                      >
+                        Try Again
+                      </button>
+                    </motion.div>
+                  ) : prayerText ? (
                     <motion.div 
                       key="text"
                       initial={{ opacity: 0 }}
@@ -411,6 +509,19 @@ export default function App() {
             )}
           </AnimatePresence>
         </div>
+
+        {/* Branding Watermark Footer */}
+        <footer className="mt-8 pt-8 border-t border-white/5 flex flex-col items-center gap-4 opacity-30 hover:opacity-100 transition-opacity duration-500">
+          <p className="text-xs uppercase tracking-[0.4em] font-serif">
+            Built by <a href="https://gatrivi.com" target="_blank" rel="noopener noreferrer" className="text-[var(--color-monastery-accent)] hover:underline">Gatrivi</a>
+          </p>
+          <div className="flex gap-6 text-[10px] uppercase tracking-widest">
+            <a href="https://x.com/gatrivi" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-monastery-accent)] transition-colors">Twitter</a>
+            <a href="https://reddit.com/u/gatrivi" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-monastery-accent)] transition-colors">Reddit</a>
+            <span className="cursor-default">✠</span>
+            <a href="https://gatrivi.com" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-monastery-accent)] transition-colors">Portfolio</a>
+          </div>
+        </footer>
 
       </main>
     </div>

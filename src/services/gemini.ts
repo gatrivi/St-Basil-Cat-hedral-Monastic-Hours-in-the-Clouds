@@ -14,7 +14,7 @@ export async function generatePrayerText(hourName: HourName, date: Date): Promis
       model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
-        systemInstruction: 'You are a monastic scribe providing the exact text for the Liturgy of the Hours.',
+        systemInstruction: 'You are a monastic scribe providing the exact text for the Liturgy of the Hours for the Gatrivi Digital Chapel.',
       }
     });
     return response.text || 'Prayer text unavailable.';
