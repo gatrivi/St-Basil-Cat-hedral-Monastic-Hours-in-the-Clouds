@@ -75,6 +75,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [audioProgress, setAudioProgress] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
+  const [hasEntered, setHasEntered] = useState(false);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const bellRef = useRef<HTMLAudioElement | null>(null);
@@ -82,9 +83,26 @@ export default function App() {
 
   const lastPlayedHourRef = useRef<string | null>(null);
 
+  // Auto-entry and Initial Load
+  useEffect(() => {
+    const now = new Date();
+    const { currentHour: curr, nextHour: next } = getCurrentAndNextHour(now);
+    setCurrentHour(curr);
+    setNextHour(next);
+
+    if (curr) {
+      console.log(`[DEBUG] App: Initializing hands-free entry for ${curr.name}`);
+      loadHourText(curr).then(() => {
+        // We attempt to play, but browsers usually block audio until interaction.
+        // We'll mark as entered so the UI is visible, but audio might wait for first click.
+        setHasEntered(true);
+        syncAndPlay(curr, now);
+      });
+    }
+  }, []);
+
   // Update clock every minute
   useEffect(() => {
-    console.log('[DEBUG] App: Initializing clock effect');
     const timer = setInterval(() => {
       const now = new Date();
       setCurrentTime(now);
@@ -93,45 +111,110 @@ export default function App() {
       setCurrentHour(curr);
       setNextHour(next);
       
-      // Auto-play logic (always on, simulating live monastery)
-      if (hasEntered && curr && !isPlaying && !isLoadingAudio && !isLoadingText) {
+      // Auto-play logic for hour transitions
+      if (curr && !isPlaying && !isLoadingAudio && !isLoadingText) {
         const hourId = `${format(now, 'yyyy-MM-dd')}-${curr.name}`;
         if (lastPlayedHourRef.current !== hourId) {
-          // Check if we are within the first 5 minutes of the hour
-          const currentMinutes = now.getMinutes();
-          if (currentMinutes < 5) {
-            console.log(`[DEBUG] App: Auto-playing hour ${curr.name}`);
-            lastPlayedHourRef.current = hourId;
-            playHour(curr);
-          }
+          console.log(`[DEBUG] App: Transitioning to new hour ${curr.name}`);
+          lastPlayedHourRef.current = hourId;
+          playHour(curr);
         }
       }
-    }, 60000);
-
-    // Initial setup
-    const { currentHour: curr, nextHour: next } = getCurrentAndNextHour(new Date());
-    console.log('[DEBUG] App: Initial hour calculation', { curr: curr?.name, next: next?.name });
-    setCurrentHour(curr);
-    setNextHour(next);
+    }, 10000); // Check every 10s for tighter sync
 
     return () => clearInterval(timer);
-  }, [hasEntered, isPlaying, isLoadingAudio, isLoadingText]);
+  }, [isPlaying, isLoadingAudio, isLoadingText]);
+
+  const syncAndPlay = async (hour: LiturgicalHour, now: Date) => {
+    const currentMinutes = now.getMinutes();
+    const currentSeconds = now.getSeconds();
+    const offsetSeconds = (currentMinutes * 60) + currentSeconds;
+    
+    // If we are within the first 15 minutes of an hour, we sync to the offset
+    if (currentMinutes < 15) {
+      console.log(`[DEBUG] App: Syncing to offset ${offsetSeconds}s for ${hour.name}`);
+      await playHour(hour, false, offsetSeconds);
+    } else {
+      console.log(`[DEBUG] App: Past 15m mark, chapel is in silent contemplation.`);
+    }
+  };
+
+  const loadHourText = async (hour: LiturgicalHour) => {
+    console.log(`[DEBUG] App: loadHourText started for ${hour.name}`);
+    if (isLoadingText) return;
+    setIsLoadingText(true);
+    setPrayerText('');
+    setError(null);
+    try {
+      const text = await generatePrayerText(hour.name, new Date());
+      setPrayerText(text);
+      return text;
+    } catch (err) {
+      setError('The monks are in silent contemplation. Please try again.');
+    } finally {
+      setIsLoadingText(false);
+    }
+  };
+
+  const playHour = async (hour: LiturgicalHour, fadeIn: boolean = false, startOffset: number = 0) => {
+    console.log(`[DEBUG] App: playHour started for ${hour.name} at offset ${startOffset}s`);
+    if (isPlaying || isLoadingAudio) return;
+
+    let text = prayerText;
+    if (!text || (currentHour && hour.name !== currentHour.name)) {
+      text = await loadHourText(hour) || '';
+      if (!text) return;
+    }
+    
+    setIsLoadingAudio(true);
+    try {
+      const audioBase64 = await generatePrayerAudio(text);
+      const audioUrl = `data:audio/wav;base64,${audioBase64}`;
+      
+      if (audioRef.current) {
+        audioRef.current.src = audioUrl;
+        audioRef.current.muted = isMuted;
+        
+        // Handle offset - if the audio is shorter than the offset, we don't play
+        audioRef.current.onloadedmetadata = () => {
+          if (audioRef.current) {
+            const duration = audioRef.current.duration;
+            if (startOffset > 0 && startOffset < duration) {
+              audioRef.current.currentTime = startOffset;
+            } else if (startOffset >= duration) {
+              console.log('[DEBUG] App: Offset exceeds audio duration, skipping playback');
+              setIsLoadingAudio(false);
+              return;
+            }
+            
+            audioRef.current.play().then(() => {
+              setIsPlaying(true);
+              setIsLoadingAudio(false);
+            }).catch(err => {
+              console.warn('[DEBUG] App: Autoplay blocked, waiting for interaction', err);
+              setIsLoadingAudio(false);
+              setHasEntered(false); // Show the entry screen as a fallback
+            });
+          }
+        };
+      }
+      
+    } catch (err) {
+      console.error('[DEBUG] App: playHour error:', err);
+      setIsLoadingAudio(false);
+    }
+  };
 
   const handleEnter = () => {
-    console.log('[DEBUG] App: handleEnter called');
     setHasEntered(true);
     if (currentHour) {
       const now = new Date();
-      const hourId = `${format(now, 'yyyy-MM-dd')}-${currentHour.name}`;
-      lastPlayedHourRef.current = hourId;
-      console.log(`[DEBUG] App: Entering with hour ${currentHour.name}`);
-      playHour(currentHour, true);
+      syncAndPlay(currentHour, now);
     }
   };
 
   // Keyboard shortcuts
   useEffect(() => {
-    console.log('[DEBUG] App: Setting up keyboard shortcuts');
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!hasEntered) return;
       if (e.target instanceof HTMLTextAreaElement) return;
@@ -160,106 +243,8 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [hasEntered, isPlaying, isLoadingAudio, isLoadingText, isMuted, currentHour]);
 
-  const loadHourText = async (hour: LiturgicalHour) => {
-    console.log(`[DEBUG] App: loadHourText started for ${hour.name}`);
-    if (isLoadingText) return;
-    setIsLoadingText(true);
-    setPrayerText('');
-    setError(null);
-    try {
-      const text = await generatePrayerText(hour.name, new Date());
-      setPrayerText(text);
-    } catch (err) {
-      setError('The monks are in silent contemplation. Please try again.');
-    } finally {
-      setIsLoadingText(false);
-    }
-  };
-
-  const playHour = async (hour: LiturgicalHour, fadeIn: boolean = false) => {
-    console.log(`[DEBUG] App: playHour started for ${hour.name}`);
-    if (isPlaying || isLoadingAudio) {
-      console.log('[DEBUG] App: playHour aborted - already playing or loading');
-      return;
-    }
-
-    let text = prayerText;
-    if (!text || (currentHour && hour.name !== currentHour.name)) {
-      setIsLoadingText(true);
-      setError(null);
-      try {
-        text = await generatePrayerText(hour.name, new Date());
-        setPrayerText(text);
-      } catch (err) {
-        console.error('[DEBUG] App: Text generation failed', err);
-        setError('The monks are in silent contemplation. Please try again.');
-        setIsLoadingText(false);
-        return;
-      }
-      setIsLoadingText(false);
-    }
-    
-    setIsLoadingAudio(true);
-    try {
-      // 2. Generate Audio
-      console.log('[DEBUG] App: Generating prayer audio...');
-      const audioBase64 = await generatePrayerAudio(text);
-      console.log('[DEBUG] App: Audio generated (base64 length):', audioBase64.length);
-      const audioUrl = `data:audio/wav;base64,${audioBase64}`;
-      
-      if (audioRef.current) {
-        audioRef.current.src = audioUrl;
-        audioRef.current.muted = isMuted;
-        if (fadeIn) {
-          audioRef.current.volume = 0;
-        } else {
-          audioRef.current.volume = 1;
-        }
-      }
-
-      // 3. Play Bell
-      if (bellRef.current && !isMuted) {
-        console.log('[DEBUG] App: Playing bell');
-        bellRef.current.currentTime = 0;
-        bellRef.current.volume = fadeIn ? 0.5 : 1;
-        await bellRef.current.play();
-      }
-      
-      // 4. Play Audio after a short delay for the bell
-      console.log('[DEBUG] App: Scheduling audio playback');
-      setTimeout(async () => {
-        if (audioRef.current) {
-          console.log('[DEBUG] App: Starting audio playback');
-          setIsPlaying(true);
-          setIsLoadingAudio(false);
-          await audioRef.current.play();
-          
-          if (fadeIn) {
-            // Fade in over 5 seconds
-            let vol = 0;
-            const fadeInterval = setInterval(() => {
-              vol += 0.05;
-              if (vol >= 1) {
-                if (audioRef.current) audioRef.current.volume = 1;
-                clearInterval(fadeInterval);
-              } else {
-                if (audioRef.current) audioRef.current.volume = vol;
-              }
-            }, 250);
-          }
-        }
-      }, 4000); // 4 seconds for the bell to ring out
-      
-    } catch (err) {
-      console.error('[DEBUG] App: playHour CRITICAL ERROR:', err);
-      setError('The monks are in silent contemplation. Please try again.');
-      setIsLoadingAudio(false);
-    }
-  };
-
   const togglePlayPause = useCallback(() => {
     if (!audioRef.current) return;
-    
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
@@ -314,7 +299,7 @@ export default function App() {
             transition={{ repeat: Infinity, duration: 3 }}
             className="mt-12 opacity-50"
           >
-            Click anywhere to begin
+            Click anywhere to join the liturgy
           </motion.div>
         </motion.div>
       </div>
@@ -371,15 +356,13 @@ export default function App() {
           {/* Left Column: Schedule & Info */}
           <div className="flex flex-col gap-6">
             <div 
-              onClick={() => currentHour && loadHourText(currentHour)}
-              className="glass-panel p-6 rounded-2xl flex flex-col justify-between relative overflow-hidden cursor-pointer group hover:border-[var(--color-monastery-accent)]/50 transition-all active:scale-[0.98]"
-              title="Click to read current prayer"
+              className="glass-panel p-6 rounded-2xl flex flex-col justify-between relative overflow-hidden"
             >
               <div className="flex justify-between items-start z-10">
                 <p className="text-xs uppercase tracking-widest opacity-50 mb-2 flex items-center gap-2">
                   <Clock size={14} /> Current Hour
                 </p>
-                <BookOpen size={14} className="opacity-0 group-hover:opacity-50 transition-opacity text-[var(--color-monastery-accent)]" />
+                <BookOpen size={14} className="opacity-50 text-[var(--color-monastery-accent)]" />
               </div>
               <AnimatePresence mode="wait">
                 <motion.div
@@ -396,20 +379,17 @@ export default function App() {
                   </div>
                   <div className="mt-4 flex items-center justify-between">
                     <span className="font-mono text-sm opacity-50">{currentHour?.timeString}</span>
-                    <span className="text-[10px] uppercase tracking-tighter opacity-0 group-hover:opacity-40 transition-opacity">Click to Open</span>
                   </div>
                 </motion.div>
               </AnimatePresence>
             </div>
 
             <div 
-              onClick={() => nextHour && loadHourText(nextHour)}
-              className="glass-panel p-6 rounded-2xl flex flex-col justify-between opacity-70 relative overflow-hidden cursor-pointer group hover:opacity-100 hover:border-[var(--color-monastery-accent)]/50 transition-all active:scale-[0.98]"
-              title="Click to read next prayer"
+              className="glass-panel p-6 rounded-2xl flex flex-col justify-between opacity-70 relative overflow-hidden"
             >
               <div className="flex justify-between items-start z-10">
                 <p className="text-xs uppercase tracking-widest opacity-50 mb-2">Next Hour</p>
-                <BookOpen size={14} className="opacity-0 group-hover:opacity-50 transition-opacity" />
+                <BookOpen size={14} className="opacity-20" />
               </div>
               <AnimatePresence mode="wait">
                 <motion.div
@@ -426,7 +406,6 @@ export default function App() {
                   </div>
                   <div className="mt-4 flex items-center justify-between">
                     <span className="font-mono text-sm opacity-50">{nextHour?.timeString}</span>
-                    <span className="text-[10px] uppercase tracking-tighter opacity-0 group-hover:opacity-40 transition-opacity">Preview</span>
                   </div>
                 </motion.div>
               </AnimatePresence>
@@ -453,7 +432,7 @@ export default function App() {
                 <button 
                   onClick={togglePlayPause}
                   disabled={isLoadingAudio || isLoadingText}
-                  className="w-16 h-16 rounded-full border border-[var(--color-monastery-accent)] flex items-center justify-center text-[var(--color-monastery-accent)] hover:bg-[var(--color-monastery-accent)] hover:text-black transition-all disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-[var(--color-monastery-accent)]"
+                  className="w-16 h-16 rounded-full border border-[var(--color-monastery-accent)] flex items-center justify-center text-[var(--color-monastery-accent)] hover:bg-[var(--color-monastery-accent)] hover:text-black transition-all disabled:opacity-50"
                   title="Play / Pause (Space)"
                 >
                   {isLoadingAudio || (isLoadingText && !prayerText) ? (
@@ -470,14 +449,7 @@ export default function App() {
                   )}
                 </button>
 
-                <button 
-                  onClick={() => nextHour && playHour(nextHour)}
-                  disabled={isLoadingAudio || isPlaying || isLoadingText}
-                  className="hover:text-[var(--color-monastery-accent)] transition-colors disabled:opacity-50"
-                  title="Skip to next hour"
-                >
-                  <SkipForward size={20} />
-                </button>
+                <div className="w-5" /> {/* Spacer instead of skip */}
               </div>
 
               {/* Audio Progress */}
@@ -486,15 +458,7 @@ export default function App() {
                   <span className="text-xs font-mono opacity-50 w-10 text-right">
                     {Math.floor(audioProgress / 60)}:{String(Math.floor(audioProgress % 60)).padStart(2, '0')}
                   </span>
-                  <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden cursor-pointer"
-                    onClick={(e) => {
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      const pct = (e.clientX - rect.left) / rect.width;
-                      if (audioRef.current) {
-                        audioRef.current.currentTime = pct * audioDuration;
-                      }
-                    }}
-                  >
+                  <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
                     <motion.div 
                       className="h-full bg-[var(--color-monastery-accent)]"
                       style={{ width: `${(audioProgress / audioDuration) * 100}%` }}
@@ -527,12 +491,6 @@ export default function App() {
                     >
                       <AlertCircle size={32} className="text-red-400 opacity-70" />
                       <p className="font-serif italic opacity-60">{error}</p>
-                      <button 
-                        onClick={() => currentHour && playHour(currentHour)}
-                        className="mt-2 text-xs uppercase tracking-widest hover:text-[var(--color-monastery-accent)] transition-colors"
-                      >
-                        Try Again
-                      </button>
                     </motion.div>
                   ) : prayerText ? (
                     <motion.div 
@@ -552,13 +510,7 @@ export default function App() {
                       exit={{ opacity: 0 }}
                       className="h-full flex flex-col items-center justify-center opacity-30 font-serif italic gap-4"
                     >
-                      <p>The chapel is quiet.</p>
-                      <button 
-                        onClick={() => currentHour && loadHourText(currentHour)}
-                        className="text-[10px] uppercase tracking-[0.3em] border border-white/20 px-4 py-2 rounded-full hover:border-[var(--color-monastery-accent)] hover:text-[var(--color-monastery-accent)] transition-all"
-                      >
-                        Open the Liturgy
-                      </button>
+                      <p>Entering the Chapel...</p>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -567,6 +519,52 @@ export default function App() {
 
           </div>
         </div>
+
+        {/* Bottom Row: Notebook & Schedule */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Notebook />
+          
+          <AnimatePresence>
+            {showSchedule && (
+              <motion.div 
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="glass-panel p-6 rounded-2xl overflow-hidden"
+              >
+                <h3 className="text-xs uppercase tracking-widest opacity-50 mb-4">Daily Rhythm</h3>
+                <div className="space-y-3">
+                  {HOURS_SCHEDULE.map((h) => (
+                    <div key={h.name} className={`flex justify-between items-center p-2 rounded ${currentHour?.name === h.name ? 'bg-[var(--color-monastery-accent)] text-black' : 'hover:bg-white/5'}`}>
+                      <div>
+                        <span className="font-serif font-bold mr-3">{h.name}</span>
+                        <span className="text-xs opacity-70">{h.description}</span>
+                      </div>
+                      <span className="font-mono text-sm">{h.timeString}</span>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Branding Watermark Footer */}
+        <footer className="mt-8 pt-8 border-t border-white/5 flex flex-col items-center gap-4 opacity-30 hover:opacity-100 transition-opacity duration-500">
+          <p className="text-xs uppercase tracking-[0.4em] font-serif">
+            Built by <a href="https://gatrivi.com" target="_blank" rel="noopener noreferrer" className="text-[var(--color-monastery-accent)] hover:underline">Gatrivi</a>
+          </p>
+          <div className="flex gap-6 text-[10px] uppercase tracking-widest items-center">
+            <a href="https://x.com/gatrivi" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-monastery-accent)] transition-colors">Twitter</a>
+            <a href="https://reddit.com/u/gatrivi" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-monastery-accent)] transition-colors">Reddit</a>
+            <span className="cursor-default">✠</span>
+            <a href="https://gatrivi.com" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-monastery-accent)] transition-colors">Portfolio</a>
+            <span className="cursor-default opacity-50 ml-2">v1.2.0</span>
+          </div>
+        </footer>
+
+      </main>
+    </div>
 
         {/* Bottom Row: Notebook & Schedule */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
