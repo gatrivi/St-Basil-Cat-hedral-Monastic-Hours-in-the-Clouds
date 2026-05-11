@@ -68,7 +68,8 @@ export default function App() {
   const [nextHour, setNextHour] = useState<LiturgicalHour | null>(null);
   const [prayerText, setPrayerText] = useState<string>('');
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingText, setIsLoadingText] = useState(false);
+  const [isLoadingAudio, setIsLoadingAudio] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -93,7 +94,7 @@ export default function App() {
       setNextHour(next);
       
       // Auto-play logic (always on, simulating live monastery)
-      if (hasEntered && curr && !isPlaying && !isLoading) {
+      if (hasEntered && curr && !isPlaying && !isLoadingAudio && !isLoadingText) {
         const hourId = `${format(now, 'yyyy-MM-dd')}-${curr.name}`;
         if (lastPlayedHourRef.current !== hourId) {
           // Check if we are within the first 5 minutes of the hour
@@ -114,7 +115,7 @@ export default function App() {
     setNextHour(next);
 
     return () => clearInterval(timer);
-  }, [hasEntered, isPlaying, isLoading]);
+  }, [hasEntered, isPlaying, isLoadingAudio, isLoadingText]);
 
   const handleEnter = () => {
     console.log('[DEBUG] App: handleEnter called');
@@ -149,29 +150,57 @@ export default function App() {
           e.preventDefault();
           notebookRef.current?.focus();
           break;
+        case 'r':
+        case 'R':
+          if (currentHour) loadHourText(currentHour);
+          break;
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [hasEntered, isPlaying, isLoading, isMuted]);
+  }, [hasEntered, isPlaying, isLoadingAudio, isLoadingText, isMuted, currentHour]);
+
+  const loadHourText = async (hour: LiturgicalHour) => {
+    console.log(`[DEBUG] App: loadHourText started for ${hour.name}`);
+    if (isLoadingText) return;
+    setIsLoadingText(true);
+    setPrayerText('');
+    setError(null);
+    try {
+      const text = await generatePrayerText(hour.name, new Date());
+      setPrayerText(text);
+    } catch (err) {
+      setError('The monks are in silent contemplation. Please try again.');
+    } finally {
+      setIsLoadingText(false);
+    }
+  };
 
   const playHour = async (hour: LiturgicalHour, fadeIn: boolean = false) => {
     console.log(`[DEBUG] App: playHour started for ${hour.name}`);
-    if (isPlaying) {
-      console.log('[DEBUG] App: playHour aborted - already playing');
+    if (isPlaying || isLoadingAudio) {
+      console.log('[DEBUG] App: playHour aborted - already playing or loading');
       return;
     }
-    setIsLoading(true);
-    setPrayerText('');
-    setError(null);
-    
-    try {
-      // 1. Generate Text
-      console.log('[DEBUG] App: Generating prayer text...');
-      const text = await generatePrayerText(hour.name, new Date());
-      console.log('[DEBUG] App: Prayer text generated (length):', text.length);
-      setPrayerText(text);
 
+    let text = prayerText;
+    if (!text || (currentHour && hour.name !== currentHour.name)) {
+      setIsLoadingText(true);
+      setError(null);
+      try {
+        text = await generatePrayerText(hour.name, new Date());
+        setPrayerText(text);
+      } catch (err) {
+        console.error('[DEBUG] App: Text generation failed', err);
+        setError('The monks are in silent contemplation. Please try again.');
+        setIsLoadingText(false);
+        return;
+      }
+      setIsLoadingText(false);
+    }
+    
+    setIsLoadingAudio(true);
+    try {
       // 2. Generate Audio
       console.log('[DEBUG] App: Generating prayer audio...');
       const audioBase64 = await generatePrayerAudio(text);
@@ -202,7 +231,7 @@ export default function App() {
         if (audioRef.current) {
           console.log('[DEBUG] App: Starting audio playback');
           setIsPlaying(true);
-          setIsLoading(false);
+          setIsLoadingAudio(false);
           await audioRef.current.play();
           
           if (fadeIn) {
@@ -224,7 +253,7 @@ export default function App() {
     } catch (err) {
       console.error('[DEBUG] App: playHour CRITICAL ERROR:', err);
       setError('The monks are in silent contemplation. Please try again.');
-      setIsLoading(false);
+      setIsLoadingAudio(false);
     }
   };
 
@@ -240,7 +269,7 @@ export default function App() {
     } else if (currentHour) {
       playHour(currentHour);
     }
-  }, [isPlaying, currentHour]);
+  }, [isPlaying, currentHour, prayerText]);
 
   const toggleMute = useCallback(() => {
     setIsMuted(prev => {
@@ -341,10 +370,17 @@ export default function App() {
           
           {/* Left Column: Schedule & Info */}
           <div className="flex flex-col gap-6">
-            <div className="glass-panel p-6 rounded-2xl flex flex-col justify-between relative overflow-hidden">
-              <p className="text-xs uppercase tracking-widest opacity-50 mb-2 flex items-center gap-2 z-10">
-                <Clock size={14} /> Current Hour
-              </p>
+            <div 
+              onClick={() => currentHour && loadHourText(currentHour)}
+              className="glass-panel p-6 rounded-2xl flex flex-col justify-between relative overflow-hidden cursor-pointer group hover:border-[var(--color-monastery-accent)]/50 transition-all active:scale-[0.98]"
+              title="Click to read current prayer"
+            >
+              <div className="flex justify-between items-start z-10">
+                <p className="text-xs uppercase tracking-widest opacity-50 mb-2 flex items-center gap-2">
+                  <Clock size={14} /> Current Hour
+                </p>
+                <BookOpen size={14} className="opacity-0 group-hover:opacity-50 transition-opacity text-[var(--color-monastery-accent)]" />
+              </div>
               <AnimatePresence mode="wait">
                 <motion.div
                   key={currentHour?.name || 'empty'}
@@ -360,13 +396,21 @@ export default function App() {
                   </div>
                   <div className="mt-4 flex items-center justify-between">
                     <span className="font-mono text-sm opacity-50">{currentHour?.timeString}</span>
+                    <span className="text-[10px] uppercase tracking-tighter opacity-0 group-hover:opacity-40 transition-opacity">Click to Open</span>
                   </div>
                 </motion.div>
               </AnimatePresence>
             </div>
 
-            <div className="glass-panel p-6 rounded-2xl flex flex-col justify-between opacity-70 relative overflow-hidden">
-              <p className="text-xs uppercase tracking-widest opacity-50 mb-2 z-10">Next Hour</p>
+            <div 
+              onClick={() => nextHour && loadHourText(nextHour)}
+              className="glass-panel p-6 rounded-2xl flex flex-col justify-between opacity-70 relative overflow-hidden cursor-pointer group hover:opacity-100 hover:border-[var(--color-monastery-accent)]/50 transition-all active:scale-[0.98]"
+              title="Click to read next prayer"
+            >
+              <div className="flex justify-between items-start z-10">
+                <p className="text-xs uppercase tracking-widest opacity-50 mb-2">Next Hour</p>
+                <BookOpen size={14} className="opacity-0 group-hover:opacity-50 transition-opacity" />
+              </div>
               <AnimatePresence mode="wait">
                 <motion.div
                   key={nextHour?.name || 'empty'}
@@ -382,6 +426,7 @@ export default function App() {
                   </div>
                   <div className="mt-4 flex items-center justify-between">
                     <span className="font-mono text-sm opacity-50">{nextHour?.timeString}</span>
+                    <span className="text-[10px] uppercase tracking-tighter opacity-0 group-hover:opacity-40 transition-opacity">Preview</span>
                   </div>
                 </motion.div>
               </AnimatePresence>
@@ -407,11 +452,11 @@ export default function App() {
                 
                 <button 
                   onClick={togglePlayPause}
-                  disabled={isLoading}
+                  disabled={isLoadingAudio || isLoadingText}
                   className="w-16 h-16 rounded-full border border-[var(--color-monastery-accent)] flex items-center justify-center text-[var(--color-monastery-accent)] hover:bg-[var(--color-monastery-accent)] hover:text-black transition-all disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-[var(--color-monastery-accent)]"
                   title="Play / Pause (Space)"
                 >
-                  {isLoading ? (
+                  {isLoadingAudio || (isLoadingText && !prayerText) ? (
                     <motion.div 
                       animate={{ rotate: 360 }} 
                       transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
@@ -427,7 +472,7 @@ export default function App() {
 
                 <button 
                   onClick={() => nextHour && playHour(nextHour)}
-                  disabled={isLoading || isPlaying}
+                  disabled={isLoadingAudio || isPlaying || isLoadingText}
                   className="hover:text-[var(--color-monastery-accent)] transition-colors disabled:opacity-50"
                   title="Skip to next hour"
                 >
@@ -463,11 +508,14 @@ export default function App() {
             </div>
 
             {/* Prayer Text Display */}
-            <div className="glass-panel p-8 rounded-2xl flex-grow flex flex-col">
-              <h3 className="text-xs uppercase tracking-widest opacity-50 mb-4 flex items-center gap-2">
-                <BookOpen size={14} /> Liturgy Text
-              </h3>
-              <div className="flex-grow overflow-y-auto max-h-[40vh] pr-2">
+            <div className="glass-panel p-8 rounded-2xl flex-grow flex flex-col min-h-[400px]">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xs uppercase tracking-widest opacity-50 flex items-center gap-2">
+                  <BookOpen size={14} /> Liturgy Text
+                </h3>
+                {isLoadingText && <span className="text-[10px] text-[var(--color-monastery-accent)] animate-pulse uppercase tracking-widest">Scribing...</span>}
+              </div>
+              <div className="flex-grow overflow-y-auto max-h-[50vh] pr-2">
                 <AnimatePresence mode="wait">
                   {error ? (
                     <motion.div 
@@ -502,9 +550,15 @@ export default function App() {
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
-                      className="h-full flex items-center justify-center opacity-30 font-serif italic"
+                      className="h-full flex flex-col items-center justify-center opacity-30 font-serif italic gap-4"
                     >
-                      The chapel is quiet.
+                      <p>The chapel is quiet.</p>
+                      <button 
+                        onClick={() => currentHour && loadHourText(currentHour)}
+                        className="text-[10px] uppercase tracking-[0.3em] border border-white/20 px-4 py-2 rounded-full hover:border-[var(--color-monastery-accent)] hover:text-[var(--color-monastery-accent)] transition-all"
+                      >
+                        Open the Liturgy
+                      </button>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -548,11 +602,12 @@ export default function App() {
           <p className="text-xs uppercase tracking-[0.4em] font-serif">
             Built by <a href="https://gatrivi.com" target="_blank" rel="noopener noreferrer" className="text-[var(--color-monastery-accent)] hover:underline">Gatrivi</a>
           </p>
-          <div className="flex gap-6 text-[10px] uppercase tracking-widest">
+          <div className="flex gap-6 text-[10px] uppercase tracking-widest items-center">
             <a href="https://x.com/gatrivi" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-monastery-accent)] transition-colors">Twitter</a>
             <a href="https://reddit.com/u/gatrivi" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-monastery-accent)] transition-colors">Reddit</a>
             <span className="cursor-default">✠</span>
             <a href="https://gatrivi.com" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-monastery-accent)] transition-colors">Portfolio</a>
+            <span className="cursor-default opacity-50 ml-2">v1.1.0</span>
           </div>
         </footer>
 

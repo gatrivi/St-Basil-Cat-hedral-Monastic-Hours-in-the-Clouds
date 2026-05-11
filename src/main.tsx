@@ -30,20 +30,44 @@ class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean,
 
 console.log('[DEBUG] main.tsx: Entry point loaded');
 const rootElement = document.getElementById('root');
-console.log('[DEBUG] main.tsx: Root element found:', !!rootElement);
+
+function updateStatus(msg: string, color: string = 'gray') {
+  console.log(`[STATUS] ${msg}`);
+  const statusCheck = document.getElementById('status-check');
+  if (statusCheck) {
+    statusCheck.innerHTML += ` <span style="color: ${color}">> ${msg}</span>`;
+  }
+}
+
+updateStatus('JS START', '#0f0');
 
 if (!rootElement) {
+  updateStatus('CRITICAL: NO ROOT', 'red');
   console.error('[DEBUG] main.tsx: CRITICAL - Root element not found in DOM');
 } else {
-  const statusCheck = document.getElementById('status-check');
-  if (statusCheck) statusCheck.style.display = 'none';
-  
-  createRoot(rootElement).render(
-    <StrictMode>
-      <ErrorBoundary>
-        <App />
-      </ErrorBoundary>
-    </StrictMode>,
-  );
-  console.log('[DEBUG] main.tsx: render() called');
+  updateStatus('ROOT FOUND', '#0f0');
+  try {
+    updateStatus('CREATING ROOT', '#0f0');
+    const root = createRoot(rootElement);
+    
+    updateStatus('RENDERING', '#0f0');
+    root.render(
+      <StrictMode>
+        <ErrorBoundary>
+          <App />
+        </ErrorBoundary>
+      </StrictMode>,
+    );
+    updateStatus('RENDER CALLED', '#0f0');
+    
+    // Hide status bar after a delay if everything seems okay
+    setTimeout(() => {
+      const statusCheck = document.getElementById('status-check');
+      if (statusCheck) statusCheck.style.display = 'none';
+    }, 5000);
+    
+  } catch (err: any) {
+    updateStatus('RENDER CRASH: ' + err.message, 'red');
+    console.error('[DEBUG] main.tsx: EXCEPTION DURING RENDER', err);
+  }
 }
