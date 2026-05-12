@@ -80,7 +80,7 @@ export default function App() {
     console.log('[DEBUG] App: Tailwind Font Sans loaded:', !!isTailwindLoaded);
   }, []);
 
-  const [hasEntered, setHasEntered] = useState(true);
+  const [hasEntered, setHasEntered] = useState(true); // Default to true for readability on entry
   const [currentTime, setCurrentTime] = useState(new Date());
   const [currentHour, setCurrentHour] = useState<LiturgicalHour | null>(null);
   const [nextHour, setNextHour] = useState<LiturgicalHour | null>(null);
@@ -94,6 +94,7 @@ export default function App() {
   const [audioProgress, setAudioProgress] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
   const [isCopied, setIsCopied] = useState(false);
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const bellRef = useRef<HTMLAudioElement | null>(null);
@@ -215,10 +216,11 @@ export default function App() {
             audioRef.current.play().then(() => {
               setIsPlaying(true);
               setIsLoadingAudio(false);
+              setAutoplayBlocked(false);
             }).catch(err => {
-              console.warn('[DEBUG] App: Autoplay blocked, waiting for interaction', err);
+              console.warn('[DEBUG] App: Autoplay blocked', err);
               setIsLoadingAudio(false);
-              // Silent failure, UI remains active
+              setAutoplayBlocked(true);
             });
           }
         };
@@ -230,8 +232,8 @@ export default function App() {
     }
   };
 
-  const handleEnter = () => {
-    setHasEntered(true);
+  const handleManualStart = () => {
+    setAutoplayBlocked(false);
     bellRef.current?.play().catch(e => console.warn("Bell play failed", e));
     if (currentHour) {
       const now = new Date();
@@ -242,7 +244,6 @@ export default function App() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!hasEntered) return;
       if (e.target instanceof HTMLTextAreaElement) return;
 
       switch (e.key) {
@@ -272,10 +273,14 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [hasEntered, isPlaying, isLoadingAudio, isLoadingText, isMuted, currentHour, handleCopy]);
+  }, [isPlaying, isLoadingAudio, isLoadingText, isMuted, currentHour, handleCopy]);
 
   const togglePlayPause = useCallback(() => {
     if (!audioRef.current) return;
+    if (autoplayBlocked) {
+      handleManualStart();
+      return;
+    }
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
@@ -285,7 +290,7 @@ export default function App() {
     } else if (currentHour) {
       playHour(currentHour);
     }
-  }, [isPlaying, currentHour, prayerText]);
+  }, [isPlaying, currentHour, prayerText, autoplayBlocked]);
 
   const toggleMute = useCallback(() => {
     setIsMuted(prev => {
@@ -306,36 +311,11 @@ export default function App() {
     );
   }, []);
 
-  if (!hasEntered) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6 relative cursor-pointer" onClick={handleEnter}>
-        <div className="atmosphere"></div>
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 2 }}
-          className="text-center space-y-8 z-10"
-        >
-          <h1 className="font-serif text-5xl md:text-7xl font-light tracking-widest text-[var(--color-monastery-accent)]">
-            Monastic Hours
-          </h1>
-          <p className="text-sm uppercase tracking-[0.3em] opacity-60">
-            Enter the Chapel
-          </p>
-          <motion.div 
-            animate={{ opacity: [0.3, 1, 0.3] }}
-            transition={{ repeat: Infinity, duration: 3 }}
-            className="mt-12 opacity-50"
-          >
-            Click anywhere to join the liturgy
-          </motion.div>
-        </motion.div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 relative">
+    <div 
+      className="min-h-screen flex flex-col items-center justify-center p-6 relative cursor-default"
+      onClick={() => { if (autoplayBlocked) handleManualStart(); }}
+    >
       <div className="atmosphere"></div>
       
       {/* Hidden Audio Elements */}
@@ -437,7 +417,7 @@ export default function App() {
             </div>
 
             <button 
-              onClick={() => setShowSchedule(!showSchedule)}
+              onClick={(e) => { e.stopPropagation(); setShowSchedule(!showSchedule); }}
               className="glass-panel p-4 rounded-xl text-xs uppercase tracking-widest hover:text-[var(--color-monastery-accent)] transition-colors text-center"
             >
               {showSchedule ? 'Hide Schedule' : 'View Full Schedule'}
@@ -448,18 +428,27 @@ export default function App() {
           <div className="lg:col-span-2 flex flex-col gap-6">
             
             {/* Player Controls */}
-            <div className="glass-panel p-4 rounded-3xl flex flex-col items-center gap-4 w-full">
+            <div className={`glass-panel p-4 rounded-3xl flex flex-col items-center gap-4 w-full transition-all duration-700 ${autoplayBlocked ? 'ring-1 ring-[var(--color-monastery-accent)]/50' : ''}`}>
               <div className="flex items-center justify-center gap-8">
-                <button onClick={toggleMute} className="hover:text-[var(--color-monastery-accent)] transition-colors" title="Mute (M)">
+                <button onClick={(e) => { e.stopPropagation(); toggleMute(); }} className="hover:text-[var(--color-monastery-accent)] transition-colors" title="Mute (M)">
                   {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
                 </button>
                 
                 <button 
-                  onClick={togglePlayPause}
+                  onClick={(e) => { e.stopPropagation(); togglePlayPause(); }}
                   disabled={isLoadingAudio || isLoadingText}
-                  className="w-16 h-16 rounded-full border border-[var(--color-monastery-accent)] flex items-center justify-center text-[var(--color-monastery-accent)] hover:bg-[var(--color-monastery-accent)] hover:text-black transition-all disabled:opacity-50"
+                  className="w-16 h-16 rounded-full border border-[var(--color-monastery-accent)] flex items-center justify-center text-[var(--color-monastery-accent)] hover:bg-[var(--color-monastery-accent)] hover:text-black transition-all disabled:opacity-50 relative"
                   title="Play / Pause (Space)"
                 >
+                  {autoplayBlocked && !isPlaying && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="absolute -top-12 whitespace-nowrap text-[10px] uppercase tracking-widest bg-[var(--color-monastery-accent)] text-black px-3 py-1.5 rounded-full font-bold shadow-lg shadow-[var(--color-monastery-accent)]/20"
+                    >
+                      Click to Join Liturgy
+                    </motion.div>
+                  )}
                   {isLoadingAudio || (isLoadingText && !prayerText) ? (
                     <motion.div 
                       animate={{ rotate: 360 }} 
@@ -474,7 +463,7 @@ export default function App() {
                   )}
                 </button>
 
-                <div className="w-5" /> {/* Spacer instead of skip */}
+                <div className="w-5" />
               </div>
 
               {/* Audio Progress */}
@@ -506,7 +495,7 @@ export default function App() {
                   {isLoadingText && <span className="text-[10px] text-[var(--color-monastery-accent)] animate-pulse uppercase tracking-widest">Scribing...</span>}
                   {prayerText && (
                     <button 
-                      onClick={handleCopy}
+                      onClick={(e) => { e.stopPropagation(); handleCopy(); }}
                       className="opacity-50 hover:opacity-100 transition-opacity text-[var(--color-monastery-accent)]"
                       title="Copy Liturgy (C)"
                     >
