@@ -4,6 +4,7 @@ import { Bell, Play, Pause, Volume2, VolumeX, Clock, BookOpen, AlertCircle, Copy
 import { format } from 'date-fns';
 import Markdown from 'react-markdown';
 import { getCurrentAndNextHour, HOURS_SCHEDULE, LiturgicalHour } from './lib/hours';
+import { getCachedPrayer, getAnyCachedPrayer, savePrayerToCache, getFallbackPrayer } from './lib/prayerCache';
 import { generatePrayerText, generatePrayerAudio } from './services/gemini';
 
 // Declare the version injected by Vite
@@ -31,6 +32,7 @@ export default function App() {
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [usingFallback, setUsingFallback] = useState(false);
   const [audioProgress, setAudioProgress] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
   const [isCopied, setIsCopied] = useState(false);
@@ -58,6 +60,12 @@ export default function App() {
 
     if (curr) {
       console.log(`[DEBUG] App: Initializing hands-free entry for ${curr.name}`);
+      // Try cache first for instant display
+      const cached = getCachedPrayer(curr.name, now);
+      if (cached) {
+        setPrayerText(cached);
+        setUsingFallback(false);
+      }
       loadHourText(curr).then((text) => {
         if (text) {
           syncAndPlay(curr, now);
@@ -104,14 +112,28 @@ export default function App() {
     console.log(`[DEBUG] App: loadHourText started for ${hour.name}`);
     if (isLoadingText) return;
     setIsLoadingText(true);
-    setPrayerText('');
     setError(null);
+    setUsingFallback(false);
     try {
       const text = await generatePrayerText(hour.name, new Date());
       setPrayerText(text);
+      savePrayerToCache(hour.name, new Date(), text);
       return text;
     } catch (err) {
-      setError('The monks are in silent contemplation. Please try again.');
+      console.warn('[DEBUG] App: API failed, falling back to cache or default prayer');
+      // Don't clear existing prayerText — keep whatever is on screen
+      const cached = getCachedPrayer(hour.name, new Date()) ?? getAnyCachedPrayer();
+      if (cached) {
+        setPrayerText(cached);
+        setUsingFallback(true);
+        return cached;
+      }
+      // Ultimate fallback: built-in timeless prayer
+      const fallback = getFallbackPrayer();
+      setPrayerText(fallback);
+      setUsingFallback(true);
+      setError('The monks are in silent contemplation. Showing the last available prayer.');
+      return fallback;
     } finally {
       setIsLoadingText(false);
     }
@@ -416,19 +438,23 @@ export default function App() {
               </div>
             )}
 
-            <AnimatePresence mode="wait">
-              {error ? (
+            {/* Subtle fallback indicator */}
+            <AnimatePresence>
+              {usingFallback && (
                 <motion.div
-                  key="error"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="flex flex-col items-center justify-center gap-4 text-center py-20"
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="absolute -top-6 left-1/2 -translate-x-1/2 flex items-center gap-2 text-[10px] uppercase tracking-widest text-[var(--color-monastery-accent)] opacity-70"
                 >
-                  <AlertCircle size={28} className="text-red-400 opacity-70" />
-                  <p className="font-serif italic opacity-60 text-lg">{error}</p>
+                  <AlertCircle size={10} />
+                  <span>{error || 'Showing the last available prayer'}</span>
                 </motion.div>
-              ) : prayerText ? (
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence mode="wait">
+              {prayerText ? (
                 <motion.div
                   key="text"
                   initial={{ opacity: 0 }}
