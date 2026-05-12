@@ -1,0 +1,33 @@
+{
+  "rules": {
+    "config": {
+      ".read": true,
+      ".write": false
+    },
+    "prayers": {
+      "$date": {
+        "$hour": {
+          ".read": true,
+          ".write": true,
+          ".validate": "newData.hasChildren(['text', 'createdAt'])"
+        }
+      }
+    },
+    "audio": {
+      "$date": {
+        "$hour": {
+          ".read": true,
+          ".write": true,
+          ".validate": "newData.hasChildren(['url', 'createdAt'])"
+        }
+      }
+    },
+    "notebook": {
+      "$deviceId": {
+        ".read": true,
+        ".write": true,
+        ".validate": "newData.hasChildren(['content', 'updatedAt'])"
+      }
+    }
+  }
+}

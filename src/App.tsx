@@ -1,11 +1,14 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+﻿import { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Bell, Play, Pause, Volume2, VolumeX, Clock, BookOpen, AlertCircle, Copy, Check, Menu, X } from 'lucide-react';
+import { Bell, Play, Pause, Volume2, VolumeX, Clock, AlertCircle, Copy, Check, Menu, X, BookOpen } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import Markdown from 'react-markdown';
 import { getCurrentAndNextHour, HOURS_SCHEDULE, LiturgicalHour } from './lib/hours';
-import { getCachedPrayer, getAnyCachedPrayer, savePrayerToCache, getFallbackPrayer } from './lib/prayerCache';
+import { getFragmentForHour, LiturgicalFragment, FRAGMENTS_BY_HOUR } from './lib/liturgicalFragments';
+import { useBackground } from './lib/backgrounds';
+import { useCosmicResonator } from './sacred/useCosmicResonator';
+import { SacredDrawing } from './sacred/procedural-rose';
 import { generatePrayerText, generatePrayerAudio } from './services/gemini';
 
 // Declare the version injected by Vite
@@ -13,6 +16,44 @@ declare const __APP_VERSION__: string;
 
 // A simple bell sound (public domain/CC0)
 const BELL_SOUND_URL = 'https://upload.wikimedia.org/wikipedia/commons/b/b4/Bell-sound.ogg';
+
+function BackgroundLayers({ currentHour }: { currentHour: LiturgicalHour | null }) {
+  const { currentSrc, previousSrc, isTransitioning } = useBackground(currentHour?.name ?? null);
+
+  return (
+    <div className="fixed inset-0 z-0">
+      {/* Previous image (fades out) */}
+      {previousSrc && (
+        <div
+          className="absolute inset-0 bg-cover bg-center transition-opacity duration-[2500ms] ease-in-out"
+          style={{
+            backgroundImage: `url(${previousSrc})`,
+            opacity: isTransitioning ? 0 : 1,
+            transform: 'scale(1.05)',
+          }}
+        />
+      )}
+      {/* Current image (fades in) */}
+      <div
+        className="absolute inset-0 bg-cover bg-center transition-opacity duration-[2500ms] ease-in-out"
+        style={{
+          backgroundImage: `url(${currentSrc})`,
+          opacity: 1,
+          transform: 'scale(1.05)',
+        }}
+      />
+      {/* Dark atmospheric overlay ΓÇö always present for text legibility */}
+      <div
+        className="absolute inset-0"
+        style={{
+          backgroundImage: 'radial-gradient(circle at 50% 30%, rgba(42, 21, 16, 0.7) 0%, rgba(10, 5, 2, 0.92) 70%)',
+        }}
+      />
+      {/* Subtle blur overlay */}
+      <div className="absolute inset-0 backdrop-blur-[6px]" />
+    </div>
+  );
+}
 
 export default function App() {
   console.log('[DEBUG] App: Component Rendering');
@@ -27,7 +68,8 @@ export default function App() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [currentHour, setCurrentHour] = useState<LiturgicalHour | null>(null);
   const [nextHour, setNextHour] = useState<LiturgicalHour | null>(null);
-  const [prayerText, setPrayerText] = useState<string>('');
+  const [fragment, setFragment] = useState<LiturgicalFragment | null>(null);
+  const [fragmentIndex, setFragmentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoadingText, setIsLoadingText] = useState(false);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
@@ -42,15 +84,60 @@ export default function App() {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const bellRef = useRef<HTMLAudioElement | null>(null);
+  const touchStartX = useRef<number | null>(null);
 
   const lastPlayedHourRef = useRef<string | null>(null);
 
+  const { init: initResonator, start: startResonator, stop: stopResonator, playBell: playResonatorBell, cleanup: cleanupResonator } = useCosmicResonator();
+  const lastInteractionRef = useRef<number>(Date.now());
+  const lastAutoRotationRef = useRef<number>(Date.now());
+
+  // Keep a background-generated prayer for occasional use, but fragments are primary
+  const [fullPrayerText, setFullPrayerText] = useState<string>('');
+
   const handleCopy = useCallback(() => {
-    if (!prayerText) return;
-    navigator.clipboard.writeText(prayerText);
+    const textToCopy = fragment ? `${fragment.title}\n\n${fragment.text}` : '';
+    if (!textToCopy) return;
+    navigator.clipboard.writeText(textToCopy);
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
-  }, [prayerText]);
+  }, [fragment]);
+
+  // Update fragment based on current hour and manual index
+  const updateFragment = useCallback((hour: LiturgicalHour | null, index: number) => {
+    if (!hour) return;
+    const fragments = FRAGMENTS_BY_HOUR[hour.name];
+    if (!fragments || fragments.length === 0) {
+      setFragment({ title: 'Oraci├│n', text: '**Am├⌐n.**' });
+      return;
+    }
+    const safeIndex = ((index % fragments.length) + fragments.length) % fragments.length;
+    setFragment(fragments[safeIndex]);
+  }, []);
+
+  const goToNextFragment = useCallback(() => {
+    if (!currentHour) return;
+    const fragments = FRAGMENTS_BY_HOUR[currentHour.name];
+    if (!fragments) return;
+    lastInteractionRef.current = Date.now();
+    setFragmentIndex(prev => {
+      const next = (prev + 1) % fragments.length;
+      updateFragment(currentHour, next);
+      return next;
+    });
+  }, [currentHour, updateFragment]);
+
+  const goToPrevFragment = useCallback(() => {
+    if (!currentHour) return;
+    const fragments = FRAGMENTS_BY_HOUR[currentHour.name];
+    if (!fragments) return;
+    lastInteractionRef.current = Date.now();
+    setFragmentIndex(prev => {
+      const next = (prev - 1 + fragments.length) % fragments.length;
+      updateFragment(currentHour, next);
+      return next;
+    });
+  }, [currentHour, updateFragment]);
 
   // Auto-entry and Initial Load
   useEffect(() => {
@@ -61,44 +148,72 @@ export default function App() {
 
     if (curr) {
       console.log(`[DEBUG] App: Initializing hands-free entry for ${curr.name}`);
-      // Try cache first for instant display
-      const cached = getCachedPrayer(curr.name, now);
-      if (cached) {
-        setPrayerText(cached);
-        setUsingFallback(false);
-      }
+      updateFragment(curr, 0);
       loadHourText(curr).then((text) => {
         if (text) {
           syncAndPlay(curr, now);
         }
       });
     }
+
+    initResonator(!isMuted);
   }, []);
 
-  // Update clock every minute
+  // Detect user interaction to pause auto-rotation while reading
+  useEffect(() => {
+    const events = ['mousemove', 'scroll', 'touchstart', 'keydown'];
+    const markActive = () => { lastInteractionRef.current = Date.now(); };
+    events.forEach(e => window.addEventListener(e, markActive, { passive: true }));
+    return () => events.forEach(e => window.removeEventListener(e, markActive));
+  }, []);
+
+  // Update clock, detect hour transitions, and auto-rotate fragments every 30s
   useEffect(() => {
     const timer = setInterval(() => {
       const now = new Date();
       setCurrentTime(now);
 
       const { currentHour: curr, nextHour: next } = getCurrentAndNextHour(now);
+      const hourChanged = curr?.name !== currentHour?.name;
       setCurrentHour(curr);
       setNextHour(next);
 
-      // Auto-play logic for hour transitions
-      if (curr && !isPlaying && !isLoadingAudio && !isLoadingText) {
-        const hourId = `${format(now, 'yyyy-MM-dd')}-${curr.name}`;
-        if (lastPlayedHourRef.current !== hourId) {
-          console.log(`[DEBUG] App: Transitioning to new hour ${curr.name}`);
-          lastPlayedHourRef.current = hourId;
-          bellRef.current?.play().catch(e => console.warn("Bell play failed", e));
-          playHour(curr);
+      if (hourChanged && curr) {
+        setFragmentIndex(0);
+        updateFragment(curr, 0);
+        lastAutoRotationRef.current = Date.now();
+        // Auto-play logic for hour transitions
+        if (!isPlaying && !isLoadingAudio && !isLoadingText) {
+          const hourId = `${format(now, 'yyyy-MM-dd')}-${curr.name}`;
+          if (lastPlayedHourRef.current !== hourId) {
+            console.log(`[DEBUG] App: Transitioning to new hour ${curr.name}`);
+            lastPlayedHourRef.current = hourId;
+            playResonatorBell();
+            playHour(curr);
+          }
+        }
+        return;
+      }
+
+      // Auto-rotate fragment only if user seems idle (3+ min without interaction)
+      // and 10+ min have passed since last auto-rotation
+      const idleMs = Date.now() - lastInteractionRef.current;
+      const sinceRotationMs = Date.now() - lastAutoRotationRef.current;
+      if (curr && idleMs > 3 * 60 * 1000 && sinceRotationMs > 10 * 60 * 1000) {
+        const fragments = FRAGMENTS_BY_HOUR[curr.name];
+        if (fragments && fragments.length > 1) {
+          setFragmentIndex(prev => {
+            const nextIdx = (prev + 1) % fragments.length;
+            updateFragment(curr, nextIdx);
+            return nextIdx;
+          });
+          lastAutoRotationRef.current = Date.now();
         }
       }
-    }, 10000); // Check every 10s for tighter sync
+    }, 30000);
 
     return () => clearInterval(timer);
-  }, [isPlaying, isLoadingAudio, isLoadingText]);
+  }, [currentHour, isPlaying, isLoadingAudio, isLoadingText, updateFragment]);
 
   const syncAndPlay = async (hour: LiturgicalHour, now: Date) => {
     const currentMinutes = now.getMinutes();
@@ -117,24 +232,13 @@ export default function App() {
     setUsingFallback(false);
     try {
       const text = await generatePrayerText(hour.name, new Date());
-      setPrayerText(text);
-      savePrayerToCache(hour.name, new Date(), text);
+      setFullPrayerText(text);
       return text;
     } catch (err) {
-      console.warn('[DEBUG] App: API failed, falling back to cache or default prayer');
-      // Don't clear existing prayerText — keep whatever is on screen
-      const cached = getCachedPrayer(hour.name, new Date()) ?? getAnyCachedPrayer();
-      if (cached) {
-        setPrayerText(cached);
-        setUsingFallback(true);
-        return cached;
-      }
-      // Ultimate fallback: built-in timeless prayer
-      const fallback = getFallbackPrayer();
-      setPrayerText(fallback);
+      console.warn('[DEBUG] App: generatePrayerText failed');
       setUsingFallback(true);
-      setError('Los monjes están en contemplación silenciosa. Mostrando la última oración disponible.');
-      return fallback;
+      setError('Los monjes estan en contemplacion silenciosa. Mostrando la ultima oracion disponible.');
+      return '';
     } finally {
       setIsLoadingText(false);
     }
@@ -144,7 +248,7 @@ export default function App() {
     console.log(`[DEBUG] App: playHour started for ${hour.name} at offset ${startOffset}s`);
     if (isPlaying || isLoadingAudio) return;
 
-    let text = prayerText;
+    let text = fullPrayerText || (fragment ? `${fragment.title}. ${fragment.text}` : '');
     if (!text || (currentHour && hour.name !== currentHour.name)) {
       text = await loadHourText(hour) || '';
       if (!text) return;
@@ -174,6 +278,7 @@ export default function App() {
               setIsPlaying(true);
               setIsLoadingAudio(false);
               setAutoplayBlocked(false);
+              startResonator();
             }).catch(err => {
               console.warn('[DEBUG] App: Autoplay blocked', err);
               setIsLoadingAudio(false);
@@ -191,7 +296,7 @@ export default function App() {
 
   const handleManualStart = () => {
     setAutoplayBlocked(false);
-    bellRef.current?.play().catch(e => console.warn("Bell play failed", e));
+    playResonatorBell();
     if (currentHour) {
       const now = new Date();
       syncAndPlay(currentHour, now);
@@ -214,8 +319,16 @@ export default function App() {
           break;
         case 'c':
         case 'C':
-          if (e.ctrlKey || e.metaKey) break; // Allow standard copy
+          if (e.ctrlKey || e.metaKey) break;
           handleCopy();
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          goToNextFragment();
+          break;
+        case 'ArrowLeft':
+          e.preventDefault();
+          goToPrevFragment();
           break;
         case 'r':
         case 'R':
@@ -225,7 +338,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, isLoadingAudio, isLoadingText, isMuted, currentHour, handleCopy]);
+  }, [isPlaying, isLoadingAudio, isLoadingText, isMuted, currentHour, handleCopy, goToNextFragment, goToPrevFragment]);
 
   const togglePlayPause = useCallback(() => {
     if (!audioRef.current) return;
@@ -242,26 +355,36 @@ export default function App() {
     } else if (currentHour) {
       playHour(currentHour);
     }
-  }, [isPlaying, currentHour, prayerText, autoplayBlocked]);
+  }, [isPlaying, currentHour, fullPrayerText, autoplayBlocked]);
 
   const toggleMute = useCallback(() => {
     setIsMuted(prev => {
       const next = !prev;
       if (audioRef.current) audioRef.current.muted = next;
       if (bellRef.current) bellRef.current.muted = next;
+      if (next) {
+        stopResonator();
+      } else if (isPlaying) {
+        startResonator();
+      }
       return next;
     });
-  }, []);
+  }, [isPlaying, startResonator, stopResonator]);
 
   // Console Watermark
   useEffect(() => {
     console.log(
-      "%c ✠ HORAS MONÁSTICAS %c por GATRIVI \n%cObra original en gatrivi.com | @gatrivi en redes",
+      "%c Γ£á HORAS MON├üSTICAS %c por GATRIVI \n%cObra original en gatrivi.com | @gatrivi en redes",
       "color: #d4af37; font-size: 20px; font-weight: bold; font-family: serif;",
       "color: #888; font-size: 14px; font-family: serif;",
       "color: #666; font-size: 12px; font-style: italic;"
     );
   }, []);
+
+  // Cleanup resonator on unmount
+  useEffect(() => {
+    return () => cleanupResonator();
+  }, [cleanupResonator]);
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -274,13 +397,14 @@ export default function App() {
       className="h-screen flex overflow-hidden relative cursor-default"
       onClick={() => { if (autoplayBlocked) handleManualStart(); }}
     >
-      <div className="atmosphere" />
+      {/* Dynamic Background with crossfade */}
+      <BackgroundLayers currentHour={currentHour} />
 
       {/* Hidden Audio Elements */}
       <audio ref={bellRef} src={BELL_SOUND_URL} preload="auto" />
       <audio
         ref={audioRef}
-        onEnded={() => setIsPlaying(false)}
+        onEnded={() => { setIsPlaying(false); stopResonator(); }}
         onPause={() => setIsPlaying(false)}
         onPlay={() => setIsPlaying(true)}
         onTimeUpdate={(e) => {
@@ -289,37 +413,45 @@ export default function App() {
             setAudioProgress(audio.currentTime);
             setAudioDuration(audio.duration);
           }
-          // TODO: Implementar resaltado de texto sincronizado con la reproducción de audio.
-          // Esto requiere marcas de tiempo a nivel de palabra (o frase) de la API TTS
-          // o una estrategia de alineación del lado del cliente (por ejemplo, velocidad de lectura estimada).
-          // Una vez disponible, mapear audio.currentTime a la palabra/frase correspondiente
-          // en prayerText y aplicar una clase de resaltado (por ejemplo, text-[var(--color-monastery-accent)]).
         }}
         onLoadedMetadata={(e) => setAudioDuration(e.currentTarget.duration || 0)}
       />
 
-      {/* Mobile Sidebar Toggle */}
-      <button
-        onClick={(e) => { e.stopPropagation(); setSidebarOpen(!sidebarOpen); }}
-        className="md:hidden fixed top-4 left-4 z-50 glass-panel p-2 rounded-lg opacity-60 hover:opacity-100 transition-opacity"
-      >
-        {sidebarOpen ? <X size={18} /> : <Menu size={18} />}
-      </button>
+      {/* Mobile Header */}
+      <header className="md:hidden fixed top-0 left-0 right-0 z-40 glass-panel border-b border-[var(--color-monastery-accent)]/10 h-14 flex items-center justify-between px-4">
+        <button
+          onClick={(e) => { e.stopPropagation(); setSidebarOpen(!sidebarOpen); }}
+          className="p-2 opacity-60 hover:opacity-100 transition-opacity"
+        >
+          {sidebarOpen ? <X size={18} /> : <Menu size={18} />}
+        </button>
+        <div className="text-center">
+          <p className="font-serif text-lg text-[var(--color-monastery-accent)] leading-none">
+            {currentHour?.name || '...'}
+          </p>
+          <p className="text-[10px] uppercase tracking-widest opacity-50">
+            {format(currentTime, 'HH:mm')}
+          </p>
+        </div>
+        <div className="w-8" /> {/* spacer */}
+      </header>
 
       {/* Sidebar */}
       <aside
         className={`
           fixed md:static inset-y-0 left-0 z-40 w-72 glass-panel border-r border-[var(--color-monastery-accent)]/10
-          flex flex-col transition-transform duration-300
+          flex flex-col transition-transform duration-500 ease-out
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+          pt-14 md:pt-0
         `}
       >
-        {/* Clock */}
-        <div className="p-6 text-center border-b border-white/5">
+        {/* Clock - hidden on mobile since it's in header */}
+        <div className="hidden md:block p-6 text-center border-b border-white/5">
           <motion.h1
             key={format(currentTime, 'HH:mm')}
             initial={{ opacity: 0.5 }}
             animate={{ opacity: 1 }}
+            transition={{ duration: 1.5 }}
             className="font-serif text-4xl text-[var(--color-monastery-accent)]"
           >
             {format(currentTime, 'HH:mm')}
@@ -337,10 +469,10 @@ export default function App() {
           <AnimatePresence mode="wait">
             <motion.div
               key={currentHour?.name || 'empty'}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.5 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 1.2 }}
             >
               <h2 className="font-serif text-2xl text-[var(--color-monastery-accent)]">
                 {currentHour?.name || '...'}
@@ -353,14 +485,14 @@ export default function App() {
 
         {/* Next Hour */}
         <div className="p-5 border-b border-white/5 opacity-70">
-          <p className="text-[10px] uppercase tracking-widest opacity-50 mb-2">Próxima Hora</p>
+          <p className="text-[10px] uppercase tracking-widest opacity-50 mb-2">Pr├│xima Hora</p>
           <AnimatePresence mode="wait">
             <motion.div
               key={nextHour?.name || 'empty'}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.5 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 1.2 }}
             >
               <h2 className="font-serif text-xl">{nextHour?.name || '...'}</h2>
               <p className="font-mono text-xs opacity-50 mt-1">{nextHour?.timeString}</p>
@@ -411,15 +543,27 @@ export default function App() {
       )}
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col relative min-w-0">
+      <main
+        className="flex-1 flex flex-col relative min-w-0 pt-14 md:pt-0"
+        onTouchStart={(e) => { touchStartX.current = e.changedTouches[0].screenX; }}
+        onTouchEnd={(e) => {
+          if (touchStartX.current == null) return;
+          const diff = touchStartX.current - e.changedTouches[0].screenX;
+          if (Math.abs(diff) > 50) {
+            if (diff > 0) goToNextFragment();
+            else goToPrevFragment();
+          }
+          touchStartX.current = null;
+        }}
+      >
         {/* Prayer Text */}
         <div className="flex-1 overflow-y-auto flex flex-col items-center justify-center p-6 md:p-12 lg:p-20">
           <div className="w-full max-w-3xl relative group">
             {/* Subtle copy button */}
-            {prayerText && (
+            {fragment && (
               <button
                 onClick={(e) => { e.stopPropagation(); handleCopy(); }}
-                className="absolute -top-2 right-0 opacity-0 group-hover:opacity-40 hover:!opacity-100 transition-all p-2"
+                className="absolute -top-2 right-0 opacity-0 group-hover:opacity-40 hover:!opacity-100 transition-all p-2 z-10"
                 title="Copiar Liturgia (C)"
               >
                 {isCopied ? <Check size={14} /> : <Copy size={14} />}
@@ -449,24 +593,64 @@ export default function App() {
                   className="absolute -top-6 left-1/2 -translate-x-1/2 flex items-center gap-2 text-[10px] uppercase tracking-widest text-[var(--color-monastery-accent)] opacity-70"
                 >
                   <AlertCircle size={10} />
-                  <span>{error || 'Mostrando la última oración disponible'}</span>
+                  <span>{error || 'Mostrando la ├║ltima oraci├│n disponible'}</span>
                 </motion.div>
               )}
             </AnimatePresence>
 
-            <AnimatePresence mode="wait">
-              {prayerText ? (
-                <motion.div
-                  key="text"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 1.2 }}
-                  className="font-serif text-xl md:text-2xl leading-[1.8] md:leading-[1.9] text-center markdown-body"
+            {/* Fragment navigation ΓÇö subtle, hover-only */}
+            {currentHour && (
+              <>
+                <button
+                  onClick={(e) => { e.stopPropagation(); goToPrevFragment(); }}
+                  className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-2 md:-translate-x-6 opacity-0 group-hover:opacity-30 hover:!opacity-100 transition-all p-3"
+                  title="Fragmento anterior (ΓåÉ)"
                 >
-                  {/* TODO: Cuando se implemente el resaltado de audio, envolver cada palabra/frase
-                      en un span y alternar una clase de resaltado basada en el progreso del audio. */}
-                  <Markdown>{prayerText}</Markdown>
+                  <span className="text-2xl font-serif">ΓÇ╣</span>
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); goToNextFragment(); }}
+                  className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-2 md:translate-x-6 opacity-0 group-hover:opacity-30 hover:!opacity-100 transition-all p-3"
+                  title="Siguiente fragmento (ΓåÆ)"
+                >
+                  <span className="text-2xl font-serif">ΓÇ║</span>
+                </button>
+                {/* Fragment counter */}
+                <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 opacity-0 group-hover:opacity-40 transition-opacity">
+                  {FRAGMENTS_BY_HOUR[currentHour.name]?.map((_, i) => (
+                    <div
+                      key={i}
+                      className={`h-1 rounded-full transition-all duration-300 ${i === fragmentIndex ? 'w-4 bg-[var(--color-monastery-accent)]' : 'w-1 bg-white/30'}`}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* Fragment display with gentle crossfade */}
+            <AnimatePresence mode="sync">
+              {fragment ? (
+                <motion.div
+                  key={`${currentHour?.name}-${fragment.title}`}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 1.8, ease: "easeInOut" }}
+                  className="space-y-6"
+                >
+                  <div className="space-y-2">
+                    <h2 className="font-serif text-3xl md:text-4xl text-[var(--color-monastery-accent)] text-center">
+                      {fragment.title}
+                    </h2>
+                    {fragment.subtitle && (
+                      <p className="text-[10px] md:text-xs uppercase tracking-[0.3em] opacity-50 text-center">
+                        {fragment.subtitle}
+                      </p>
+                    )}
+                  </div>
+                  <div className="font-serif text-lg md:text-xl leading-[1.8] md:leading-[1.9] text-center markdown-body">
+                    <Markdown>{fragment.text}</Markdown>
+                  </div>
                 </motion.div>
               ) : (
                 <motion.div
@@ -501,7 +685,7 @@ export default function App() {
             className="flex items-center justify-center w-8 h-8 rounded-full border border-white/20 hover:border-[var(--color-monastery-accent)] hover:text-[var(--color-monastery-accent)] transition-all disabled:opacity-30 shrink-0"
             title="Reproducir / Pausar (Espacio)"
           >
-            {isLoadingAudio || (isLoadingText && !prayerText) ? (
+            {isLoadingAudio || (isLoadingText && !fragment) ? (
               <motion.div
                 animate={{ rotate: 360 }}
                 transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
@@ -523,6 +707,11 @@ export default function App() {
           >
             {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
           </button>
+
+          {/* Sacred symbol — subtle, in the audio bar */}
+          <div className="hidden md:block opacity-30 hover:opacity-70 transition-opacity shrink-0">
+            <SacredDrawing symbolKey="cross" progress={isPlaying ? 0.8 : 0.3} size={20} />
+          </div>
 
           {/* Progress */}
           <div className="flex-1 flex items-center gap-3 min-w-0">

@@ -1,0 +1,29 @@
+{
+  "rules": {
+    "prayers": {
+      "$date": {
+        "$hour": {
+          ".read": true,
+          ".write": "auth != null",
+          ".validate": "newData.hasChildren(['text', 'createdAt'])"
+        }
+      }
+    },
+    "audio": {
+      "$date": {
+        "$hour": {
+          ".read": true,
+          ".write": "auth != null",
+          ".validate": "newData.hasChildren(['url', 'createdAt'])"
+        }
+      }
+    },
+    "notebook": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        ".write": "auth != null && auth.uid == $uid",
+        ".validate": "newData.hasChildren(['content', 'updatedAt'])"
+      }
+    }
+  }
+}
