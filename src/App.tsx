@@ -1,10 +1,13 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Bell, Play, Pause, Volume2, VolumeX, SkipForward, BookOpen, Clock, AlertCircle } from 'lucide-react';
+import { Bell, Play, Pause, Volume2, VolumeX, SkipForward, BookOpen, Clock, AlertCircle, Copy, Check } from 'lucide-react';
 import { format } from 'date-fns';
 import Markdown from 'react-markdown';
 import { getCurrentAndNextHour, HOURS_SCHEDULE, LiturgicalHour } from './lib/hours';
 import { generatePrayerText, generatePrayerAudio } from './services/gemini';
+
+// Declare the version injected by Vite
+declare const __APP_VERSION__: string;
 
 // A simple bell sound (public domain/CC0)
 const BELL_SOUND_URL = 'https://upload.wikimedia.org/wikipedia/commons/b/b4/Bell-sound.ogg';
@@ -12,6 +15,8 @@ const BELL_SOUND_URL = 'https://upload.wikimedia.org/wikipedia/commons/b/b4/Bell
 function Notebook() {
   const [content, setContent] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<number | null>(null);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     fetch('/api/notebook')
@@ -20,30 +25,44 @@ function Notebook() {
       .catch(err => console.error("Failed to load notebook", err));
   }, []);
 
-  const handleSave = async (newContent: string) => {
-    setContent(newContent);
+  const debouncedSave = useCallback((newContent: string) => {
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    
     setIsSaving(true);
-    try {
-      await fetch('/api/notebook', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: newContent })
-      });
-    } catch (err) {
-      console.error("Failed to save notebook", err);
-    }
-    setIsSaving(false);
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        await fetch('/api/notebook', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: newContent })
+        });
+        setLastSaved(Date.now());
+      } catch (err) {
+        console.error("Failed to save notebook", err);
+      } finally {
+        setIsSaving(false);
+      }
+    }, 1000);
+  }, []);
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setContent(val);
+    debouncedSave(val);
   };
 
   return (
     <div className="glass-panel p-6 rounded-2xl flex flex-col h-64 md:h-full">
       <h3 className="text-xs uppercase tracking-widest opacity-50 mb-4 flex justify-between">
         <span>Personal Notebook</span>
-        {isSaving && <span className="text-[var(--color-monastery-accent)]">Saving...</span>}
+        <span className="flex gap-2">
+          {isSaving && <span className="text-[var(--color-monastery-accent)] animate-pulse">Saving...</span>}
+          {!isSaving && lastSaved && <span className="text-green-500/50">Saved</span>}
+        </span>
       </h3>
       <textarea
         value={content}
-        onChange={(e) => handleSave(e.target.value)}
+        onChange={handleChange}
         className="w-full h-full bg-transparent resize-none outline-none font-serif text-lg leading-relaxed text-[var(--color-monastery-text)] placeholder:opacity-30"
         placeholder="Write your chores and thoughts here..."
       />
@@ -61,8 +80,7 @@ export default function App() {
     console.log('[DEBUG] App: Tailwind Font Sans loaded:', !!isTailwindLoaded);
   }, []);
 
-  const [hasEntered, setHasEntered] = useState(false);
-  // ... rest of state
+  const [hasEntered, setHasEntered] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [currentHour, setCurrentHour] = useState<LiturgicalHour | null>(null);
   const [nextHour, setNextHour] = useState<LiturgicalHour | null>(null);
@@ -75,13 +93,20 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [audioProgress, setAudioProgress] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
-  const [hasEntered, setHasEntered] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const bellRef = useRef<HTMLAudioElement | null>(null);
   const notebookRef = useRef<HTMLTextAreaElement | null>(null);
 
   const lastPlayedHourRef = useRef<string | null>(null);
+
+  const handleCopy = useCallback(() => {
+    if (!prayerText) return;
+    navigator.clipboard.writeText(prayerText);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  }, [prayerText]);
 
   // Auto-entry and Initial Load
   useEffect(() => {
@@ -92,11 +117,10 @@ export default function App() {
 
     if (curr) {
       console.log(`[DEBUG] App: Initializing hands-free entry for ${curr.name}`);
-      loadHourText(curr).then(() => {
-        // We attempt to play, but browsers usually block audio until interaction.
-        // We'll mark as entered so the UI is visible, but audio might wait for first click.
-        setHasEntered(true);
-        syncAndPlay(curr, now);
+      loadHourText(curr).then((text) => {
+        if (text) {
+          syncAndPlay(curr, now);
+        }
       });
     }
   }, []);
@@ -117,6 +141,7 @@ export default function App() {
         if (lastPlayedHourRef.current !== hourId) {
           console.log(`[DEBUG] App: Transitioning to new hour ${curr.name}`);
           lastPlayedHourRef.current = hourId;
+          bellRef.current?.play().catch(e => console.warn("Bell play failed", e));
           playHour(curr);
         }
       }
@@ -193,7 +218,7 @@ export default function App() {
             }).catch(err => {
               console.warn('[DEBUG] App: Autoplay blocked, waiting for interaction', err);
               setIsLoadingAudio(false);
-              setHasEntered(false); // Show the entry screen as a fallback
+              // Silent failure, UI remains active
             });
           }
         };
@@ -207,6 +232,7 @@ export default function App() {
 
   const handleEnter = () => {
     setHasEntered(true);
+    bellRef.current?.play().catch(e => console.warn("Bell play failed", e));
     if (currentHour) {
       const now = new Date();
       syncAndPlay(currentHour, now);
@@ -228,6 +254,11 @@ export default function App() {
         case 'M':
           toggleMute();
           break;
+        case 'c':
+        case 'C':
+          if (e.ctrlKey || e.metaKey) break; // Allow standard copy
+          handleCopy();
+          break;
         case 'n':
         case 'N':
           e.preventDefault();
@@ -241,7 +272,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [hasEntered, isPlaying, isLoadingAudio, isLoadingText, isMuted, currentHour]);
+  }, [hasEntered, isPlaying, isLoadingAudio, isLoadingText, isMuted, currentHour, handleCopy]);
 
   const togglePlayPause = useCallback(() => {
     if (!audioRef.current) return;
@@ -278,9 +309,6 @@ export default function App() {
   if (!hasEntered) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative cursor-pointer" onClick={handleEnter}>
-        <div style={{ position: 'fixed', top: 10, right: 10, background: 'rgba(0,255,0,0.8)', color: 'black', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', zIndex: 9999, fontWeight: 'bold' }}>
-          JS ACTIVE
-        </div>
         <div className="atmosphere"></div>
         <motion.div 
           initial={{ opacity: 0, scale: 0.9 }}
@@ -308,9 +336,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6 relative">
-      <div style={{ position: 'fixed', top: 10, right: 10, background: 'rgba(0,255,0,0.8)', color: 'black', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', zIndex: 9999, fontWeight: 'bold' }}>
-        JS ACTIVE
-      </div>
       <div className="atmosphere"></div>
       
       {/* Hidden Audio Elements */}
@@ -472,12 +497,23 @@ export default function App() {
             </div>
 
             {/* Prayer Text Display */}
-            <div className="glass-panel p-8 rounded-2xl flex-grow flex flex-col min-h-[400px]">
+            <div className="glass-panel p-8 rounded-2xl flex-grow flex flex-col min-h-[400px] relative">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-xs uppercase tracking-widest opacity-50 flex items-center gap-2">
                   <BookOpen size={14} /> Liturgy Text
                 </h3>
-                {isLoadingText && <span className="text-[10px] text-[var(--color-monastery-accent)] animate-pulse uppercase tracking-widest">Scribing...</span>}
+                <div className="flex items-center gap-4">
+                  {isLoadingText && <span className="text-[10px] text-[var(--color-monastery-accent)] animate-pulse uppercase tracking-widest">Scribing...</span>}
+                  {prayerText && (
+                    <button 
+                      onClick={handleCopy}
+                      className="opacity-50 hover:opacity-100 transition-opacity text-[var(--color-monastery-accent)]"
+                      title="Copy Liturgy (C)"
+                    >
+                      {isCopied ? <Check size={16} /> : <Copy size={16} />}
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="flex-grow overflow-y-auto max-h-[50vh] pr-2">
                 <AnimatePresence mode="wait">
@@ -559,53 +595,7 @@ export default function App() {
             <a href="https://reddit.com/u/gatrivi" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-monastery-accent)] transition-colors">Reddit</a>
             <span className="cursor-default">✠</span>
             <a href="https://gatrivi.com" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-monastery-accent)] transition-colors">Portfolio</a>
-            <span className="cursor-default opacity-50 ml-2">v1.2.0</span>
-          </div>
-        </footer>
-
-      </main>
-    </div>
-
-        {/* Bottom Row: Notebook & Schedule */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Notebook />
-          
-          <AnimatePresence>
-            {showSchedule && (
-              <motion.div 
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="glass-panel p-6 rounded-2xl overflow-hidden"
-              >
-                <h3 className="text-xs uppercase tracking-widest opacity-50 mb-4">Daily Rhythm</h3>
-                <div className="space-y-3">
-                  {HOURS_SCHEDULE.map((h) => (
-                    <div key={h.name} className={`flex justify-between items-center p-2 rounded ${currentHour?.name === h.name ? 'bg-[var(--color-monastery-accent)] text-black' : 'hover:bg-white/5'}`}>
-                      <div>
-                        <span className="font-serif font-bold mr-3">{h.name}</span>
-                        <span className="text-xs opacity-70">{h.description}</span>
-                      </div>
-                      <span className="font-mono text-sm">{h.timeString}</span>
-                    </div>
-                  ))}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* Branding Watermark Footer */}
-        <footer className="mt-8 pt-8 border-t border-white/5 flex flex-col items-center gap-4 opacity-30 hover:opacity-100 transition-opacity duration-500">
-          <p className="text-xs uppercase tracking-[0.4em] font-serif">
-            Built by <a href="https://gatrivi.com" target="_blank" rel="noopener noreferrer" className="text-[var(--color-monastery-accent)] hover:underline">Gatrivi</a>
-          </p>
-          <div className="flex gap-6 text-[10px] uppercase tracking-widest items-center">
-            <a href="https://x.com/gatrivi" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-monastery-accent)] transition-colors">Twitter</a>
-            <a href="https://reddit.com/u/gatrivi" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-monastery-accent)] transition-colors">Reddit</a>
-            <span className="cursor-default">✠</span>
-            <a href="https://gatrivi.com" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-monastery-accent)] transition-colors">Portfolio</a>
-            <span className="cursor-default opacity-50 ml-2">v1.1.0</span>
+            <span className="cursor-default opacity-50 ml-2">v{__APP_VERSION__}</span>
           </div>
         </footer>
 
