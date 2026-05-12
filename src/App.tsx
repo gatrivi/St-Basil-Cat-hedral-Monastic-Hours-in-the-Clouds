@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Bell, Play, Pause, Volume2, VolumeX, SkipForward, BookOpen, Clock, AlertCircle, Copy, Check } from 'lucide-react';
+import { Bell, Play, Pause, Volume2, VolumeX, Clock, BookOpen, AlertCircle, Copy, Check, Menu, X } from 'lucide-react';
 import { format } from 'date-fns';
 import Markdown from 'react-markdown';
 import { getCurrentAndNextHour, HOURS_SCHEDULE, LiturgicalHour } from './lib/hours';
@@ -12,67 +12,9 @@ declare const __APP_VERSION__: string;
 // A simple bell sound (public domain/CC0)
 const BELL_SOUND_URL = 'https://upload.wikimedia.org/wikipedia/commons/b/b4/Bell-sound.ogg';
 
-function Notebook() {
-  const [content, setContent] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-  const [lastSaved, setLastSaved] = useState<number | null>(null);
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    fetch('/api/notebook')
-      .then(res => res.json())
-      .then(data => setContent(data.content))
-      .catch(err => console.error("Failed to load notebook", err));
-  }, []);
-
-  const debouncedSave = useCallback((newContent: string) => {
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    
-    setIsSaving(true);
-    saveTimeoutRef.current = setTimeout(async () => {
-      try {
-        await fetch('/api/notebook', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: newContent })
-        });
-        setLastSaved(Date.now());
-      } catch (err) {
-        console.error("Failed to save notebook", err);
-      } finally {
-        setIsSaving(false);
-      }
-    }, 1000);
-  }, []);
-
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const val = e.target.value;
-    setContent(val);
-    debouncedSave(val);
-  };
-
-  return (
-    <div className="glass-panel p-6 rounded-2xl flex flex-col h-64 md:h-full">
-      <h3 className="text-xs uppercase tracking-widest opacity-50 mb-4 flex justify-between">
-        <span>Personal Notebook</span>
-        <span className="flex gap-2">
-          {isSaving && <span className="text-[var(--color-monastery-accent)] animate-pulse">Saving...</span>}
-          {!isSaving && lastSaved && <span className="text-green-500/50">Saved</span>}
-        </span>
-      </h3>
-      <textarea
-        value={content}
-        onChange={handleChange}
-        className="w-full h-full bg-transparent resize-none outline-none font-serif text-lg leading-relaxed text-[var(--color-monastery-text)] placeholder:opacity-30"
-        placeholder="Write your chores and thoughts here..."
-      />
-    </div>
-  );
-}
-
 export default function App() {
   console.log('[DEBUG] App: Component Rendering');
-  
+
   useEffect(() => {
     const bg = getComputedStyle(document.body).getPropertyValue('--color-monastery-bg');
     console.log('[DEBUG] App: CSS Variable --color-monastery-bg:', bg || 'NOT FOUND');
@@ -80,7 +22,6 @@ export default function App() {
     console.log('[DEBUG] App: Tailwind Font Sans loaded:', !!isTailwindLoaded);
   }, []);
 
-  const [hasEntered, setHasEntered] = useState(true); // Default to true for readability on entry
   const [currentTime, setCurrentTime] = useState(new Date());
   const [currentHour, setCurrentHour] = useState<LiturgicalHour | null>(null);
   const [nextHour, setNextHour] = useState<LiturgicalHour | null>(null);
@@ -89,16 +30,15 @@ export default function App() {
   const [isLoadingText, setIsLoadingText] = useState(false);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [showSchedule, setShowSchedule] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [audioProgress, setAudioProgress] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
   const [isCopied, setIsCopied] = useState(false);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
-  
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const bellRef = useRef<HTMLAudioElement | null>(null);
-  const notebookRef = useRef<HTMLTextAreaElement | null>(null);
 
   const lastPlayedHourRef = useRef<string | null>(null);
 
@@ -131,11 +71,11 @@ export default function App() {
     const timer = setInterval(() => {
       const now = new Date();
       setCurrentTime(now);
-      
+
       const { currentHour: curr, nextHour: next } = getCurrentAndNextHour(now);
       setCurrentHour(curr);
       setNextHour(next);
-      
+
       // Auto-play logic for hour transitions
       if (curr && !isPlaying && !isLoadingAudio && !isLoadingText) {
         const hourId = `${format(now, 'yyyy-MM-dd')}-${curr.name}`;
@@ -155,14 +95,9 @@ export default function App() {
     const currentMinutes = now.getMinutes();
     const currentSeconds = now.getSeconds();
     const offsetSeconds = (currentMinutes * 60) + currentSeconds;
-    
-    // If we are within the first 15 minutes of an hour, we sync to the offset
-    if (currentMinutes < 15) {
-      console.log(`[DEBUG] App: Syncing to offset ${offsetSeconds}s for ${hour.name}`);
-      await playHour(hour, false, offsetSeconds);
-    } else {
-      console.log(`[DEBUG] App: Past 15m mark, chapel is in silent contemplation.`);
-    }
+
+    console.log(`[DEBUG] App: Syncing to offset ${offsetSeconds}s for ${hour.name}`);
+    await playHour(hour, false, offsetSeconds);
   };
 
   const loadHourText = async (hour: LiturgicalHour) => {
@@ -191,17 +126,16 @@ export default function App() {
       text = await loadHourText(hour) || '';
       if (!text) return;
     }
-    
+
     setIsLoadingAudio(true);
     try {
       const audioBase64 = await generatePrayerAudio(text);
       const audioUrl = `data:audio/wav;base64,${audioBase64}`;
-      
+
       if (audioRef.current) {
         audioRef.current.src = audioUrl;
         audioRef.current.muted = isMuted;
-        
-        // Handle offset - if the audio is shorter than the offset, we don't play
+
         audioRef.current.onloadedmetadata = () => {
           if (audioRef.current) {
             const duration = audioRef.current.duration;
@@ -212,7 +146,7 @@ export default function App() {
               setIsLoadingAudio(false);
               return;
             }
-            
+
             audioRef.current.play().then(() => {
               setIsPlaying(true);
               setIsLoadingAudio(false);
@@ -225,7 +159,7 @@ export default function App() {
           }
         };
       }
-      
+
     } catch (err) {
       console.error('[DEBUG] App: playHour error:', err);
       setIsLoadingAudio(false);
@@ -259,11 +193,6 @@ export default function App() {
         case 'C':
           if (e.ctrlKey || e.metaKey) break; // Allow standard copy
           handleCopy();
-          break;
-        case 'n':
-        case 'N':
-          e.preventDefault();
-          notebookRef.current?.focus();
           break;
         case 'r':
         case 'R':
@@ -311,18 +240,24 @@ export default function App() {
     );
   }, []);
 
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${String(s).padStart(2, '0')}`;
+  };
+
   return (
-    <div 
-      className="min-h-screen flex flex-col items-center justify-center p-6 relative cursor-default"
+    <div
+      className="h-screen flex overflow-hidden relative cursor-default"
       onClick={() => { if (autoplayBlocked) handleManualStart(); }}
     >
-      <div className="atmosphere"></div>
-      
+      <div className="atmosphere" />
+
       {/* Hidden Audio Elements */}
       <audio ref={bellRef} src={BELL_SOUND_URL} preload="auto" />
-      <audio 
-        ref={audioRef} 
-        onEnded={() => setIsPlaying(false)} 
+      <audio
+        ref={audioRef}
+        onEnded={() => setIsPlaying(false)}
         onPause={() => setIsPlaying(false)}
         onPlay={() => setIsPlaying(true)}
         onTimeUpdate={(e) => {
@@ -331,263 +266,264 @@ export default function App() {
             setAudioProgress(audio.currentTime);
             setAudioDuration(audio.duration);
           }
+          // TODO: Implement text highlighting synced to audio playback.
+          // This requires word-level (or phrase-level) timestamps from the TTS API
+          // or a client-side alignment strategy (e.g., estimated reading rate).
+          // Once available, map audio.currentTime to the corresponding word/phrase
+          // in prayerText and apply a highlight class (e.g., text-[var(--color-monastery-accent)]).
         }}
         onLoadedMetadata={(e) => setAudioDuration(e.currentTarget.duration || 0)}
       />
 
-      <main className="w-full max-w-5xl flex flex-col gap-8 z-10">
-        
-        {/* Header / Clock */}
-        <header className="text-center space-y-2">
-          <motion.h1 
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="font-serif text-5xl md:text-7xl font-light tracking-widest text-[var(--color-monastery-accent)]"
+      {/* Mobile Sidebar Toggle */}
+      <button
+        onClick={(e) => { e.stopPropagation(); setSidebarOpen(!sidebarOpen); }}
+        className="md:hidden fixed top-4 left-4 z-50 glass-panel p-2 rounded-lg opacity-60 hover:opacity-100 transition-opacity"
+      >
+        {sidebarOpen ? <X size={18} /> : <Menu size={18} />}
+      </button>
+
+      {/* Sidebar */}
+      <aside
+        className={`
+          fixed md:static inset-y-0 left-0 z-40 w-72 glass-panel border-r border-[var(--color-monastery-accent)]/10
+          flex flex-col transition-transform duration-300
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        `}
+      >
+        {/* Clock */}
+        <div className="p-6 text-center border-b border-white/5">
+          <motion.h1
+            key={format(currentTime, 'HH:mm')}
+            initial={{ opacity: 0.5 }}
+            animate={{ opacity: 1 }}
+            className="font-serif text-4xl text-[var(--color-monastery-accent)]"
           >
             {format(currentTime, 'HH:mm')}
           </motion.h1>
-          <motion.p 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.2 }}
-            className="text-xs uppercase tracking-[0.3em] opacity-60"
-          >
+          <p className="text-xs uppercase tracking-[0.3em] opacity-60 mt-1">
             {format(currentTime, 'EEEE, MMMM do')}
-          </motion.p>
-        </header>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
-          
-          {/* Left Column: Schedule & Info */}
-          <div className="flex flex-col gap-6">
-            <div 
-              className="glass-panel p-6 rounded-2xl flex flex-col justify-between relative overflow-hidden"
-            >
-              <div className="flex justify-between items-start z-10">
-                <p className="text-xs uppercase tracking-widest opacity-50 mb-2 flex items-center gap-2">
-                  <Clock size={14} /> Current Hour
-                </p>
-                <BookOpen size={14} className="opacity-50 text-[var(--color-monastery-accent)]" />
-              </div>
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={currentHour?.name || 'empty'}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 1 }}
-                  className="flex flex-col justify-between h-full"
-                >
-                  <div>
-                    <h2 className="font-serif text-3xl text-[var(--color-monastery-accent)]">{currentHour?.name || '...'}</h2>
-                    <p className="text-sm opacity-70 mt-1">{currentHour?.description}</p>
-                  </div>
-                  <div className="mt-4 flex items-center justify-between">
-                    <span className="font-mono text-sm opacity-50">{currentHour?.timeString}</span>
-                  </div>
-                </motion.div>
-              </AnimatePresence>
-            </div>
-
-            <div 
-              className="glass-panel p-6 rounded-2xl flex flex-col justify-between opacity-70 relative overflow-hidden"
-            >
-              <div className="flex justify-between items-start z-10">
-                <p className="text-xs uppercase tracking-widest opacity-50 mb-2">Next Hour</p>
-                <BookOpen size={14} className="opacity-20" />
-              </div>
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={nextHour?.name || 'empty'}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 1 }}
-                  className="flex flex-col justify-between h-full"
-                >
-                  <div>
-                    <h2 className="font-serif text-2xl">{nextHour?.name || '...'}</h2>
-                    <p className="text-sm opacity-70 mt-1">{nextHour?.description}</p>
-                  </div>
-                  <div className="mt-4 flex items-center justify-between">
-                    <span className="font-mono text-sm opacity-50">{nextHour?.timeString}</span>
-                  </div>
-                </motion.div>
-              </AnimatePresence>
-            </div>
-
-            <button 
-              onClick={(e) => { e.stopPropagation(); setShowSchedule(!showSchedule); }}
-              className="glass-panel p-4 rounded-xl text-xs uppercase tracking-widest hover:text-[var(--color-monastery-accent)] transition-colors text-center"
-            >
-              {showSchedule ? 'Hide Schedule' : 'View Full Schedule'}
-            </button>
-          </div>
-
-          {/* Middle Column: Player & Text */}
-          <div className="lg:col-span-2 flex flex-col gap-6">
-            
-            {/* Player Controls */}
-            <div className={`glass-panel p-4 rounded-3xl flex flex-col items-center gap-4 w-full transition-all duration-700 ${autoplayBlocked ? 'ring-1 ring-[var(--color-monastery-accent)]/50' : ''}`}>
-              <div className="flex items-center justify-center gap-8">
-                <button onClick={(e) => { e.stopPropagation(); toggleMute(); }} className="hover:text-[var(--color-monastery-accent)] transition-colors" title="Mute (M)">
-                  {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
-                </button>
-                
-                <button 
-                  onClick={(e) => { e.stopPropagation(); togglePlayPause(); }}
-                  disabled={isLoadingAudio || isLoadingText}
-                  className="w-16 h-16 rounded-full border border-[var(--color-monastery-accent)] flex items-center justify-center text-[var(--color-monastery-accent)] hover:bg-[var(--color-monastery-accent)] hover:text-black transition-all disabled:opacity-50 relative"
-                  title="Play / Pause (Space)"
-                >
-                  {autoplayBlocked && !isPlaying && (
-                    <motion.div 
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="absolute -top-12 whitespace-nowrap text-[10px] uppercase tracking-widest bg-[var(--color-monastery-accent)] text-black px-3 py-1.5 rounded-full font-bold shadow-lg shadow-[var(--color-monastery-accent)]/20"
-                    >
-                      Click to Join Liturgy
-                    </motion.div>
-                  )}
-                  {isLoadingAudio || (isLoadingText && !prayerText) ? (
-                    <motion.div 
-                      animate={{ rotate: 360 }} 
-                      transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
-                    >
-                      <Bell size={24} />
-                    </motion.div>
-                  ) : isPlaying ? (
-                    <Pause size={24} />
-                  ) : (
-                    <Play size={24} className="ml-1" />
-                  )}
-                </button>
-
-                <div className="w-5" />
-              </div>
-
-              {/* Audio Progress */}
-              {audioDuration > 0 && (
-                <div className="w-full flex items-center gap-3 px-4">
-                  <span className="text-xs font-mono opacity-50 w-10 text-right">
-                    {Math.floor(audioProgress / 60)}:{String(Math.floor(audioProgress % 60)).padStart(2, '0')}
-                  </span>
-                  <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
-                    <motion.div 
-                      className="h-full bg-[var(--color-monastery-accent)]"
-                      style={{ width: `${(audioProgress / audioDuration) * 100}%` }}
-                    />
-                  </div>
-                  <span className="text-xs font-mono opacity-50 w-10">
-                    {Math.floor(audioDuration / 60)}:{String(Math.floor(audioDuration % 60)).padStart(2, '0')}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Prayer Text Display */}
-            <div className="glass-panel p-8 rounded-2xl flex-grow flex flex-col min-h-[400px] relative">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xs uppercase tracking-widest opacity-50 flex items-center gap-2">
-                  <BookOpen size={14} /> Liturgy Text
-                </h3>
-                <div className="flex items-center gap-4">
-                  {isLoadingText && <span className="text-[10px] text-[var(--color-monastery-accent)] animate-pulse uppercase tracking-widest">Scribing...</span>}
-                  {prayerText && (
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); handleCopy(); }}
-                      className="opacity-50 hover:opacity-100 transition-opacity text-[var(--color-monastery-accent)]"
-                      title="Copy Liturgy (C)"
-                    >
-                      {isCopied ? <Check size={16} /> : <Copy size={16} />}
-                    </button>
-                  )}
-                </div>
-              </div>
-              <div className="flex-grow overflow-y-auto max-h-[50vh] pr-2">
-                <AnimatePresence mode="wait">
-                  {error ? (
-                    <motion.div 
-                      key="error"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="h-full flex flex-col items-center justify-center gap-3 text-center"
-                    >
-                      <AlertCircle size={32} className="text-red-400 opacity-70" />
-                      <p className="font-serif italic opacity-60">{error}</p>
-                    </motion.div>
-                  ) : prayerText ? (
-                    <motion.div 
-                      key="text"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="font-serif text-lg leading-relaxed space-y-4 text-center markdown-body"
-                    >
-                      <Markdown>{prayerText}</Markdown>
-                    </motion.div>
-                  ) : (
-                    <motion.div 
-                      key="empty"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="h-full flex flex-col items-center justify-center opacity-30 font-serif italic gap-4"
-                    >
-                      <p>Entering the Chapel...</p>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            </div>
-
-          </div>
+          </p>
         </div>
 
-        {/* Bottom Row: Notebook & Schedule */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Notebook />
-          
-          <AnimatePresence>
-            {showSchedule && (
-              <motion.div 
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="glass-panel p-6 rounded-2xl overflow-hidden"
-              >
-                <h3 className="text-xs uppercase tracking-widest opacity-50 mb-4">Daily Rhythm</h3>
-                <div className="space-y-3">
-                  {HOURS_SCHEDULE.map((h) => (
-                    <div key={h.name} className={`flex justify-between items-center p-2 rounded ${currentHour?.name === h.name ? 'bg-[var(--color-monastery-accent)] text-black' : 'hover:bg-white/5'}`}>
-                      <div>
-                        <span className="font-serif font-bold mr-3">{h.name}</span>
-                        <span className="text-xs opacity-70">{h.description}</span>
-                      </div>
-                      <span className="font-mono text-sm">{h.timeString}</span>
-                    </div>
-                  ))}
-                </div>
-              </motion.div>
-            )}
+        {/* Current Hour */}
+        <div className="p-5 border-b border-white/5">
+          <p className="text-[10px] uppercase tracking-widest opacity-50 mb-2 flex items-center gap-1.5">
+            <Clock size={10} /> Current Hour
+          </p>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentHour?.name || 'empty'}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.5 }}
+            >
+              <h2 className="font-serif text-2xl text-[var(--color-monastery-accent)]">
+                {currentHour?.name || '...'}
+              </h2>
+              <p className="text-xs opacity-70 mt-0.5">{currentHour?.description}</p>
+              <p className="font-mono text-xs opacity-50 mt-1">{currentHour?.timeString}</p>
+            </motion.div>
           </AnimatePresence>
         </div>
 
-        {/* Branding Watermark Footer */}
-        <footer className="mt-8 pt-8 border-t border-white/5 flex flex-col items-center gap-4 opacity-30 hover:opacity-100 transition-opacity duration-500">
-          <p className="text-xs uppercase tracking-[0.4em] font-serif">
-            Built by <a href="https://gatrivi.com" target="_blank" rel="noopener noreferrer" className="text-[var(--color-monastery-accent)] hover:underline">Gatrivi</a>
-          </p>
-          <div className="flex gap-6 text-[10px] uppercase tracking-widest items-center">
-            <a href="https://x.com/gatrivi" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-monastery-accent)] transition-colors">Twitter</a>
-            <a href="https://reddit.com/u/gatrivi" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-monastery-accent)] transition-colors">Reddit</a>
-            <span className="cursor-default">✠</span>
-            <a href="https://gatrivi.com" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-monastery-accent)] transition-colors">Portfolio</a>
-            <span className="cursor-default opacity-50 ml-2">v{__APP_VERSION__}</span>
-          </div>
-        </footer>
+        {/* Next Hour */}
+        <div className="p-5 border-b border-white/5 opacity-70">
+          <p className="text-[10px] uppercase tracking-widest opacity-50 mb-2">Next Hour</p>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={nextHour?.name || 'empty'}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.5 }}
+            >
+              <h2 className="font-serif text-xl">{nextHour?.name || '...'}</h2>
+              <p className="font-mono text-xs opacity-50 mt-1">{nextHour?.timeString}</p>
+            </motion.div>
+          </AnimatePresence>
+        </div>
 
+        {/* Schedule */}
+        <div className="flex-1 overflow-y-auto p-5">
+          <p className="text-[10px] uppercase tracking-widest opacity-50 mb-3">Daily Rhythm</p>
+          <div className="space-y-1">
+            {HOURS_SCHEDULE.map((h) => (
+              <div
+                key={h.name}
+                className={`
+                  flex justify-between items-center px-3 py-2 rounded text-sm transition-colors
+                  ${currentHour?.name === h.name
+                    ? 'bg-[var(--color-monastery-accent)] text-black'
+                    : 'hover:bg-white/5 opacity-70'
+                  }
+                `}
+              >
+                <span className="font-serif">{h.name}</span>
+                <span className="font-mono text-xs opacity-70">{h.timeString}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t border-white/5 text-center opacity-40 hover:opacity-100 transition-opacity duration-500">
+          <p className="text-[10px] uppercase tracking-widest">
+            <a href="https://gatrivi.com" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-monastery-accent)] transition-colors">
+              Gatrivi
+            </a>
+            <span className="mx-2 opacity-50">|</span>
+            <span className="opacity-50">v{__APP_VERSION__}</span>
+          </p>
+        </div>
+      </aside>
+
+      {/* Mobile Sidebar Overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-30 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col relative min-w-0">
+        {/* Prayer Text */}
+        <div className="flex-1 overflow-y-auto flex flex-col items-center justify-center p-6 md:p-12 lg:p-20">
+          <div className="w-full max-w-3xl relative group">
+            {/* Subtle copy button */}
+            {prayerText && (
+              <button
+                onClick={(e) => { e.stopPropagation(); handleCopy(); }}
+                className="absolute -top-2 right-0 opacity-0 group-hover:opacity-40 hover:!opacity-100 transition-all p-2"
+                title="Copy Liturgy (C)"
+              >
+                {isCopied ? <Check size={14} /> : <Copy size={14} />}
+              </button>
+            )}
+
+            {/* Loading / Scribing indicator */}
+            {isLoadingText && (
+              <div className="flex items-center justify-center gap-3 opacity-50 mb-8">
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ repeat: Infinity, duration: 3, ease: "linear" }}
+                >
+                  <Bell size={16} />
+                </motion.div>
+                <span className="text-[10px] uppercase tracking-[0.3em]">Scribing...</span>
+              </div>
+            )}
+
+            <AnimatePresence mode="wait">
+              {error ? (
+                <motion.div
+                  key="error"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="flex flex-col items-center justify-center gap-4 text-center py-20"
+                >
+                  <AlertCircle size={28} className="text-red-400 opacity-70" />
+                  <p className="font-serif italic opacity-60 text-lg">{error}</p>
+                </motion.div>
+              ) : prayerText ? (
+                <motion.div
+                  key="text"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 1.2 }}
+                  className="font-serif text-xl md:text-2xl leading-[1.8] md:leading-[1.9] text-center markdown-body"
+                >
+                  {/* TODO: When audio-highlighting is implemented, wrap each word/phrase
+                      in a span and toggle a highlight class based on audio progress. */}
+                  <Markdown>{prayerText}</Markdown>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="empty"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="flex flex-col items-center justify-center opacity-30 font-serif italic gap-4 py-20"
+                >
+                  <Bell size={24} />
+                  <p className="text-lg">Entering the Chapel...</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+
+        {/* Minimal Audio Bar */}
+        <div
+          className={`
+            h-12 glass-panel border-t border-[var(--color-monastery-accent)]/10
+            flex items-center px-4 md:px-6 gap-3 md:gap-4
+            opacity-40 hover:opacity-90 transition-opacity duration-500
+            ${autoplayBlocked ? 'opacity-70' : ''}
+          `}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Play / Pause */}
+          <button
+            onClick={togglePlayPause}
+            disabled={isLoadingAudio || isLoadingText}
+            className="flex items-center justify-center w-8 h-8 rounded-full border border-white/20 hover:border-[var(--color-monastery-accent)] hover:text-[var(--color-monastery-accent)] transition-all disabled:opacity-30 shrink-0"
+            title="Play / Pause (Space)"
+          >
+            {isLoadingAudio || (isLoadingText && !prayerText) ? (
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
+              >
+                <Bell size={12} />
+              </motion.div>
+            ) : isPlaying ? (
+              <Pause size={12} />
+            ) : (
+              <Play size={12} className="ml-0.5" />
+            )}
+          </button>
+
+          {/* Mute */}
+          <button
+            onClick={toggleMute}
+            className="hover:text-[var(--color-monastery-accent)] transition-colors shrink-0 opacity-70 hover:opacity-100"
+            title="Mute (M)"
+          >
+            {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+          </button>
+
+          {/* Progress */}
+          <div className="flex-1 flex items-center gap-3 min-w-0">
+            <span className="text-[10px] font-mono opacity-50 w-8 text-right shrink-0 hidden sm:inline">
+              {formatTime(audioProgress)}
+            </span>
+            <div className="flex-1 h-[2px] bg-white/10 rounded-full overflow-hidden">
+              <motion.div
+                className="h-full bg-[var(--color-monastery-accent)]"
+                style={{ width: `${audioDuration > 0 ? (audioProgress / audioDuration) * 100 : 0}%` }}
+              />
+            </div>
+            <span className="text-[10px] font-mono opacity-50 w-8 shrink-0 hidden sm:inline">
+              {formatTime(audioDuration)}
+            </span>
+          </div>
+
+          {/* Autoplay blocked hint */}
+          {autoplayBlocked && !isPlaying && (
+            <motion.span
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="text-[10px] uppercase tracking-widest text-[var(--color-monastery-accent)] shrink-0"
+            >
+              Tap to begin
+            </motion.span>
+          )}
+        </div>
       </main>
     </div>
   );
