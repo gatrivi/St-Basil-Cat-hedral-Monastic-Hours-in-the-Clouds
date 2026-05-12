@@ -1,25 +1,31 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Monastic Hours by Gatrivi</title>
+    <title>Horas Monásticas — Gatrivi</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="author" content="Gatrivi (gatrivi.com)" />
-    <meta name="description" content="A digital monastic chapel for the Liturgy of the Hours. Created by Gatrivi." />
+    <meta name="description" content="Capilla digital para la Liturgia de las Horas. Oración, contemplación y silencio a través del día." />
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="Horas Monásticas — Gatrivi" />
+    <meta property="og:description" content="Capilla digital para la Liturgia de las Horas. Oración, contemplación y silencio a través del día." />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="/favicon.svg" />
+    <meta property="og:locale" content="es_ES" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Horas Monásticas — Gatrivi" />
+    <meta name="twitter:description" content="Capilla digital para la Liturgia de las Horas. Oración, contemplación y silencio a través del día." />
   </head>
   <body style="background: #000; color: #fff;">
-    <div id="status-check" style="position: fixed; top: 0; left: 0; width: 100%; background: #333; color: #fff; text-align: center; font-family: monospace; font-size: 10px; z-index: 10000; padding: 2px;">
-      HTML LOADED (WAITING FOR REACT...)
-    </div>
     <div id="root"></div>
     <script>
-      console.log('[DEBUG] index.html: Inline script execution started');
       window.onload = function() {
-        console.log('[DEBUG] index.html: window.onload fired');
         const root = document.getElementById('root');
-        if (root) console.log('[DEBUG] index.html: #root found');
-        else console.error('[DEBUG] index.html: #root NOT FOUND');
+        if (!root) console.error('[index.html] #root NOT FOUND');
       };
     </script>
     <script type="module" src="/src/main.tsx"></script>
