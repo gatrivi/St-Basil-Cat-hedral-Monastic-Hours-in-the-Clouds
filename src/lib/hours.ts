@@ -1,6 +1,6 @@
 import { addDays, isAfter, isBefore, parse, startOfDay } from 'date-fns';
 
-export type HourName = 'Matins' | 'Lauds' | 'Terce' | 'Sext' | 'None' | 'Vespers' | 'Compline';
+export type HourName = 'Maitines' | 'Laudes' | 'Tercia' | 'Sexta' | 'Nona' | 'Vísperas' | 'Completas';
 
 export interface LiturgicalHour {
   name: HourName;
@@ -9,13 +9,13 @@ export interface LiturgicalHour {
 }
 
 export const HOURS_SCHEDULE: LiturgicalHour[] = [
-  { name: 'Matins', timeString: '00:00', description: 'Office of Readings' },
-  { name: 'Lauds', timeString: '06:00', description: 'Morning Prayer' },
-  { name: 'Terce', timeString: '09:00', description: 'Mid-Morning Prayer' },
-  { name: 'Sext', timeString: '12:00', description: 'Midday Prayer' },
-  { name: 'None', timeString: '15:00', description: 'Mid-Afternoon Prayer' },
-  { name: 'Vespers', timeString: '18:00', description: 'Evening Prayer' },
-  { name: 'Compline', timeString: '21:00', description: 'Night Prayer' },
+  { name: 'Maitines', timeString: '00:00', description: 'Oficio de Lectura' },
+  { name: 'Laudes', timeString: '06:00', description: 'Oración de la Mañana' },
+  { name: 'Tercia', timeString: '09:00', description: 'Oración de Media Mañana' },
+  { name: 'Sexta', timeString: '12:00', description: 'Oración del Mediodía' },
+  { name: 'Nona', timeString: '15:00', description: 'Oración de Media Tarde' },
+  { name: 'Vísperas', timeString: '18:00', description: 'Oración de la Tarde' },
+  { name: 'Completas', timeString: '21:00', description: 'Oración de la Noche' },
 ];
 
 export function getCurrentAndNextHour(now: Date = new Date()) {

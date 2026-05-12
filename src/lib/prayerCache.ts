@@ -2,37 +2,37 @@ import { HourName } from './hours';
 import { format } from 'date-fns';
 
 const CACHE_KEY = 'monastic-hours-cache';
-const FALLBACK_PRAYER = `# Universal Prayer
+const FALLBACK_PRAYER = `# Oración Universal
 
-**V.** O God, come to my assistance.  
-**R.** Lord, make haste to help me.
+**V.** Dios mío, ven en mi auxilio.  
+**R.** Señor, date prisa en socorrerme.
 
-**Glory be to the Father, and to the Son, and to the Holy Spirit.**  
-*As it was in the beginning, is now, and ever shall be, world without end. Amen.*
+**Gloria al Padre, y al Hijo, y al Espíritu Santo.**  
+*Como era en el principio, ahora y siempre, por los siglos de los siglos. Amén.*
 
-## Reading
+## Lectura
 
-*The Lord is my shepherd, I shall not want. He makes me lie down in green pastures; He leads me beside still waters. He restores my soul.*
+*El Señor es mi pastor, nada me falta. En verdes praderas me hace descansar; hacia aguas tranquilas me conduce. Fortalece mi alma.*
 
-## Responsory
+## Responsorio
 
-**V.** In the midst of life we are in death.  
-**R.** To whom shall we turn but to You, O Lord?
+**V.** En medio de la vida estamos en la muerte.  
+**R.** ¿A quién acudiremos sino a Ti, Señor?
 
-## Prayer
+## Oración
 
-Lord God, Father of all mercy,  
-look upon Your servants in their hour of need.  
-When the words of men fail,  
-let the silence of the heart speak.  
-When the world grows dark,  
-be our light and our consolation.  
-Through Christ our Lord.  
-**R.** Amen.
+Señor Dios, Padre de toda misericordia,  
+mira a tus siervos en su hora de necesidad.  
+Cuando las palabras de los hombres fallan,  
+que el silencio del corazón hable.  
+Cuando el mundo se oscurece,  
+se nuestra luz y nuestra consolación.  
+Por Cristo nuestro Señor.  
+**R.** Amén.
 
-**V.** May the Lord bless us and keep us.  
-**R.** And may His face shine upon us, now and forever.  
-**Amen.**
+**V.** El Señor nos bendiga y nos guarde.  
+**R.** Y haga brillar su rostro sobre nosotros, ahora y por siempre.  
+**Amén.**
 `;
 
 interface CacheEntry {

@@ -20,20 +20,20 @@ export async function generatePrayerText(hourName: HourName, date: Date): Promis
   
   try {
     const ai = getAI();
-    const prompt = `Generate a short version of the text for the Catholic Liturgy of the Hours for ${hourName} for today (${date.toDateString()}). 
-    Keep it under 150 words. Include a short reading, a responsory, and a concluding prayer. 
-    Format it nicely using Markdown. Do not include any conversational filler, just the prayer text itself.
-    Make it sound authentic to a monastic setting (e.g., Carthusian or Carmelite).`;
+    const prompt = `Genera una versión breve del texto para la Liturgia de las Horas católica para ${hourName} de hoy (${date.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}).
+    Mantenlo bajo 150 palabras. Incluye una breve lectura, un responsorio y una oración final.
+    Formátalo bien usando Markdown. No incluyas relleno conversacional, solo el texto de la oración.
+    Haz que suene auténtico a un entorno monástico (por ejemplo, cartujo o carmelita).`;
 
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
-        systemInstruction: 'You are a monastic scribe providing the exact text for the Liturgy of the Hours for the Gatrivi Digital Chapel.',
+        systemInstruction: 'Eres un monje copista que proporciona el texto exacto de la Liturgia de las Horas para la Capilla Digital Gatrivi. Escribe siempre en español.',
       }
     });
     console.log('[DEBUG] Gemini Service: generatePrayerText success');
-    return response.text || 'Prayer text unavailable.';
+    return response.text || 'Texto de oración no disponible.';
   } catch (error) {
     console.error('[DEBUG] Gemini Service: generatePrayerText FAILED', error);
     throw error;

@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Bell, Play, Pause, Volume2, VolumeX, Clock, BookOpen, AlertCircle, Copy, Check, Menu, X } from 'lucide-react';
 import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 import Markdown from 'react-markdown';
 import { getCurrentAndNextHour, HOURS_SCHEDULE, LiturgicalHour } from './lib/hours';
 import { getCachedPrayer, getAnyCachedPrayer, savePrayerToCache, getFallbackPrayer } from './lib/prayerCache';
@@ -132,7 +133,7 @@ export default function App() {
       const fallback = getFallbackPrayer();
       setPrayerText(fallback);
       setUsingFallback(true);
-      setError('The monks are in silent contemplation. Showing the last available prayer.');
+      setError('Los monjes están en contemplación silenciosa. Mostrando la última oración disponible.');
       return fallback;
     } finally {
       setIsLoadingText(false);
@@ -255,7 +256,7 @@ export default function App() {
   // Console Watermark
   useEffect(() => {
     console.log(
-      "%c ✠ MONASTIC HOURS %c by GATRIVI \n%cOriginal work at gatrivi.com | @gatrivi on socials",
+      "%c ✠ HORAS MONÁSTICAS %c por GATRIVI \n%cObra original en gatrivi.com | @gatrivi en redes",
       "color: #d4af37; font-size: 20px; font-weight: bold; font-family: serif;",
       "color: #888; font-size: 14px; font-family: serif;",
       "color: #666; font-size: 12px; font-style: italic;"
@@ -288,11 +289,11 @@ export default function App() {
             setAudioProgress(audio.currentTime);
             setAudioDuration(audio.duration);
           }
-          // TODO: Implement text highlighting synced to audio playback.
-          // This requires word-level (or phrase-level) timestamps from the TTS API
-          // or a client-side alignment strategy (e.g., estimated reading rate).
-          // Once available, map audio.currentTime to the corresponding word/phrase
-          // in prayerText and apply a highlight class (e.g., text-[var(--color-monastery-accent)]).
+          // TODO: Implementar resaltado de texto sincronizado con la reproducción de audio.
+          // Esto requiere marcas de tiempo a nivel de palabra (o frase) de la API TTS
+          // o una estrategia de alineación del lado del cliente (por ejemplo, velocidad de lectura estimada).
+          // Una vez disponible, mapear audio.currentTime a la palabra/frase correspondiente
+          // en prayerText y aplicar una clase de resaltado (por ejemplo, text-[var(--color-monastery-accent)]).
         }}
         onLoadedMetadata={(e) => setAudioDuration(e.currentTarget.duration || 0)}
       />
@@ -324,14 +325,14 @@ export default function App() {
             {format(currentTime, 'HH:mm')}
           </motion.h1>
           <p className="text-xs uppercase tracking-[0.3em] opacity-60 mt-1">
-            {format(currentTime, 'EEEE, MMMM do')}
+            {format(currentTime, "EEEE, d 'de' MMMM", { locale: es })}
           </p>
         </div>
 
         {/* Current Hour */}
         <div className="p-5 border-b border-white/5">
           <p className="text-[10px] uppercase tracking-widest opacity-50 mb-2 flex items-center gap-1.5">
-            <Clock size={10} /> Current Hour
+            <Clock size={10} /> Hora Actual
           </p>
           <AnimatePresence mode="wait">
             <motion.div
@@ -352,7 +353,7 @@ export default function App() {
 
         {/* Next Hour */}
         <div className="p-5 border-b border-white/5 opacity-70">
-          <p className="text-[10px] uppercase tracking-widest opacity-50 mb-2">Next Hour</p>
+          <p className="text-[10px] uppercase tracking-widest opacity-50 mb-2">Próxima Hora</p>
           <AnimatePresence mode="wait">
             <motion.div
               key={nextHour?.name || 'empty'}
@@ -369,7 +370,7 @@ export default function App() {
 
         {/* Schedule */}
         <div className="flex-1 overflow-y-auto p-5">
-          <p className="text-[10px] uppercase tracking-widest opacity-50 mb-3">Daily Rhythm</p>
+          <p className="text-[10px] uppercase tracking-widest opacity-50 mb-3">Ritmo Diario</p>
           <div className="space-y-1">
             {HOURS_SCHEDULE.map((h) => (
               <div
@@ -419,7 +420,7 @@ export default function App() {
               <button
                 onClick={(e) => { e.stopPropagation(); handleCopy(); }}
                 className="absolute -top-2 right-0 opacity-0 group-hover:opacity-40 hover:!opacity-100 transition-all p-2"
-                title="Copy Liturgy (C)"
+                title="Copiar Liturgia (C)"
               >
                 {isCopied ? <Check size={14} /> : <Copy size={14} />}
               </button>
@@ -434,7 +435,7 @@ export default function App() {
                 >
                   <Bell size={16} />
                 </motion.div>
-                <span className="text-[10px] uppercase tracking-[0.3em]">Scribing...</span>
+                <span className="text-[10px] uppercase tracking-[0.3em]">Escribiendo...</span>
               </div>
             )}
 
@@ -448,7 +449,7 @@ export default function App() {
                   className="absolute -top-6 left-1/2 -translate-x-1/2 flex items-center gap-2 text-[10px] uppercase tracking-widest text-[var(--color-monastery-accent)] opacity-70"
                 >
                   <AlertCircle size={10} />
-                  <span>{error || 'Showing the last available prayer'}</span>
+                  <span>{error || 'Mostrando la última oración disponible'}</span>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -463,8 +464,8 @@ export default function App() {
                   transition={{ duration: 1.2 }}
                   className="font-serif text-xl md:text-2xl leading-[1.8] md:leading-[1.9] text-center markdown-body"
                 >
-                  {/* TODO: When audio-highlighting is implemented, wrap each word/phrase
-                      in a span and toggle a highlight class based on audio progress. */}
+                  {/* TODO: Cuando se implemente el resaltado de audio, envolver cada palabra/frase
+                      en un span y alternar una clase de resaltado basada en el progreso del audio. */}
                   <Markdown>{prayerText}</Markdown>
                 </motion.div>
               ) : (
@@ -476,7 +477,7 @@ export default function App() {
                   className="flex flex-col items-center justify-center opacity-30 font-serif italic gap-4 py-20"
                 >
                   <Bell size={24} />
-                  <p className="text-lg">Entering the Chapel...</p>
+                  <p className="text-lg">Entrando a la Capilla...</p>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -498,7 +499,7 @@ export default function App() {
             onClick={togglePlayPause}
             disabled={isLoadingAudio || isLoadingText}
             className="flex items-center justify-center w-8 h-8 rounded-full border border-white/20 hover:border-[var(--color-monastery-accent)] hover:text-[var(--color-monastery-accent)] transition-all disabled:opacity-30 shrink-0"
-            title="Play / Pause (Space)"
+            title="Reproducir / Pausar (Espacio)"
           >
             {isLoadingAudio || (isLoadingText && !prayerText) ? (
               <motion.div
@@ -518,7 +519,7 @@ export default function App() {
           <button
             onClick={toggleMute}
             className="hover:text-[var(--color-monastery-accent)] transition-colors shrink-0 opacity-70 hover:opacity-100"
-            title="Mute (M)"
+            title="Silenciar (M)"
           >
             {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
           </button>
@@ -546,7 +547,7 @@ export default function App() {
               animate={{ opacity: 1 }}
               className="text-[10px] uppercase tracking-widest text-[var(--color-monastery-accent)] shrink-0"
             >
-              Tap to begin
+              Toca para comenzar
             </motion.span>
           )}
         </div>
