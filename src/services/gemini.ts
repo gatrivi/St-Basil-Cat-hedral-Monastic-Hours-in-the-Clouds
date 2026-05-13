@@ -1,6 +1,7 @@
 import { GoogleGenAI, Modality } from '@google/genai';
 import { HourName, getFallbackPrayer } from '../lib/hours';
 import { getCachedPrayer, setCachedPrayer } from './prayerCache';
+import { getRecordingUrl, fetchRecordingsMetadata } from './recordings';
 
 // ─── Gemini Client ───
 let aiInstance: GoogleGenAI | null = null;
@@ -194,16 +195,28 @@ export function createSpeechController(text: string): SpeechController {
   return ctrl;
 }
 
-// ─── Convenience: try Gemini audio, fallback to Web Speech ───
+// ΓööΓöÇΓöÇ Convenience: try manual recording, then Gemini audio, fallback to Web Speech ΓööΓöÇΓöÇ
 export async function generateAudioOrFallback(
-  text: string
-): Promise<{ mode: 'piper'; base64: string } | { mode: 'speech'; controller: SpeechController }> {
+  text: string,
+  options?: { hour?: string; index?: number }
+): Promise<{ mode: 'piper' | 'manual'; base64?: string; url?: string } | { mode: 'speech'; controller: SpeechController }> {
+  // 1. Check for manual recording
+  if (options?.hour !== undefined && options?.index !== undefined) {
+    const url = await getRecordingUrl(options.hour, options.index);
+    if (url) {
+      console.log('[Cathedral] Using manual recording from Firebase');
+      return { mode: 'manual', url };
+    }
+  }
+
   try {
     const base64 = await generatePrayerAudio(text);
     return { mode: 'piper', base64 };
   } catch (err) {
-    console.warn('[Cathedral] Gemini TTS failed, using browser speech:', err);
-    const controller = createSpeechController(text);
-    return { mode: 'speech', controller };
+    // User requested robotic voice to be disabled by default. 
+    // We return an empty/error state or throw instead of falling back to speech.
+    console.warn('[Cathedral] Piper TTS failed. Robotic fallback is disabled.');
+    throw new Error('Audio generation failed and robotic fallback is disabled.');
   }
 }
+

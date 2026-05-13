@@ -52,22 +52,28 @@
   - Model is unreachable
 - **Impact:** The app **never shows a blank screen.**
 
-### 3. Web Speech API Fallback
-- If Gemini TTS fails, the browser's free `speechSynthesis` kicks in
-- Configured for solemn reading: rate `0.85×`, pitch `0.95×`
-- Auto-selects best available English male voice
-- Progress bar, play/pause, and mute all work identically
-- **Impact:** Audio works **with zero API calls** and **no API key.**
+### 3. Web Speech API (Robotic) Fallback
+- **Disabled by Default:** Following user feedback, the robotic browser-native voice is now disabled. The app relies exclusively on high-quality AI TTS (Piper) or manual recordings.
+- **Impact:** Ensures the monastic atmosphere remains authentic without sudden "robotic" intrusions.
 
-### 4. Grannie-Proof UX
+### 4. Grannie-Proof & TV-Ready UX
 - Removed debug "JS ACTIVE" badge
 - Replaced "click anywhere" with a **giant "Enter the Chapel" button**
 - All buttons have **both icons and text labels**
 - Minimum 44px touch targets everywhere
-- Base font size bumped to `18px`; prayer text is `text-xl`–`text-2xl`
-- Plain-English error messages
+- **Fluid Typography:** Base font scales via `clamp(16px, 1.2vw + 14px, 24px)` ΓÇö readable on 4K TVs and 5" phones.
+- **TV Navigation:** D-pad friendly focus states and visible-enough navigation arrows.
+- **Cinematic Transitions:** Fragment crossfades fixed with `mode="wait"` and subtle scale animations.
 - Respects `prefers-reduced-motion`
 - Visible focus rings for keyboard navigation
+
+### 5. Manual Voice Recording Pipeline (v1.2.2)
+- **Cloud Persistence:** Recordings are uploaded to **Firebase Storage** and metadata is stored in **Realtime Database**. This ensures recordings persist across sessions and deployments (unlike the local filesystem).
+- **Priority Playback:** The audio engine prefers manual recordings over AI synthetic voices.
+- **Quality Control:** Status labels ("Final" vs "Needs Re-record") help manage the growing voice library.
+- **Keyboard Shortcut:** `[V]` to toggle the recorder instantly.
+
+
 
 ---
 
