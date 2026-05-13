@@ -1,7 +1,7 @@
 import { GoogleGenAI, Modality } from '@google/genai';
 import { HourName, getFallbackPrayer } from '../lib/hours';
 import { getCachedPrayer, setCachedPrayer } from './prayerCache';
-import { getRecordingUrl, fetchRecordingsMetadata } from './recordings';
+import { getRecordingUrl, getPrayerRecordingUrl } from './recordings';
 
 // ─── Gemini Client ───
 let aiInstance: GoogleGenAI | null = null;
@@ -200,11 +200,20 @@ export async function generateAudioOrFallback(
   text: string,
   options?: { hour?: string; index?: number }
 ): Promise<{ mode: 'piper' | 'manual'; base64?: string; url?: string } | { mode: 'speech'; controller: SpeechController }> {
-  // 1. Check for manual recording
+  // 1. Check for prayer-level recording (new hour-only key)
+  if (options?.hour) {
+    const url = await getPrayerRecordingUrl(options.hour);
+    if (url) {
+      console.log('[Cathedral] Using prayer-level recording from Firebase');
+      return { mode: 'manual', url };
+    }
+  }
+
+  // 2. Fallback to legacy fragment-level recording
   if (options?.hour !== undefined && options?.index !== undefined) {
     const url = await getRecordingUrl(options.hour, options.index);
     if (url) {
-      console.log('[Cathedral] Using manual recording from Firebase');
+      console.log('[Cathedral] Using legacy fragment recording from Firebase');
       return { mode: 'manual', url };
     }
   }

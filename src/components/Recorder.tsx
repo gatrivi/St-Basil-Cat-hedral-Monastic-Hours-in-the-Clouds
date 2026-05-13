@@ -1,41 +1,45 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, Square, Play, Check, RotateCcw, Save, Trash2, AlertCircle } from 'lucide-react';
-import { uploadRecording, RecordingMetadata, fetchRecordingsMetadata } from '../services/recordings';
+import { Mic, Square, Save, Trash2, AlertCircle, Check, RotateCcw } from 'lucide-react';
+import { uploadPrayerRecording, getPrayerRecordingMetadata, RecordingMetadata } from '../services/recordings';
 
 interface RecorderProps {
   hour: string;
   index: number;
+  prayerText?: string;
   onFinished?: () => void;
 }
 
-export function Recorder({ hour, index, onFinished }: RecorderProps) {
+export function Recorder({ hour, index, prayerText, onFinished }: RecorderProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<'draft' | 'final' | 'requires_rerecord'>('final');
   const [isUploading, setIsUploading] = useState(false);
   const [existingMetadata, setExistingMetadata] = useState<RecordingMetadata | null>(null);
+  const [recordingDuration, setRecordingDuration] = useState(0);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const durationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startTimeRef = useRef<number>(0);
 
   useEffect(() => {
     async function checkExisting() {
-      const metadata = await fetchRecordingsMetadata();
-      const filename = `${hour}_${index}.wav`;
-      if (metadata[filename]) {
-        setExistingMetadata(metadata[filename]);
-        setStatus(metadata[filename].status);
+      const metadata = await getPrayerRecordingMetadata(hour);
+      if (metadata) {
+        setExistingMetadata(metadata);
+        setStatus(metadata.status);
       } else {
         setExistingMetadata(null);
       }
     }
     checkExisting();
     
-    // Reset state when hour/index changes
+    // Reset state when hour changes
     setAudioBlob(null);
     setPreviewUrl(null);
-  }, [hour, index]);
+    setRecordingDuration(0);
+  }, [hour]);
 
   const startRecording = async () => {
     try {
@@ -43,6 +47,8 @@ export function Recorder({ hour, index, onFinished }: RecorderProps) {
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
+      startTimeRef.current = Date.now();
+      setRecordingDuration(0);
 
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
@@ -53,13 +59,21 @@ export function Recorder({ hour, index, onFinished }: RecorderProps) {
         setAudioBlob(blob);
         setPreviewUrl(URL.createObjectURL(blob));
         stream.getTracks().forEach(track => track.stop());
+        if (durationTimerRef.current) {
+          clearInterval(durationTimerRef.current);
+          durationTimerRef.current = null;
+        }
       };
 
       mediaRecorder.start();
       setIsRecording(true);
+      
+      durationTimerRef.current = setInterval(() => {
+        setRecordingDuration(Math.floor((Date.now() - startTimeRef.current) / 1000));
+      }, 1000);
     } catch (err) {
       console.error('Error accessing microphone:', err);
-      alert('Could not access microphone.');
+      alert('No se pudo acceder al micr├│fono.');
     }
   };
 
@@ -73,17 +87,18 @@ export function Recorder({ hour, index, onFinished }: RecorderProps) {
   const handleSave = async () => {
     if (!audioBlob) return;
     setIsUploading(true);
-    const success = await uploadRecording(hour, index, audioBlob, status);
+    const success = await uploadPrayerRecording(hour, audioBlob, status);
     setIsUploading(false);
     if (success) {
       setAudioBlob(null);
       setPreviewUrl(null);
+      setRecordingDuration(0);
       onFinished?.();
       // Refresh metadata
-      const metadata = await fetchRecordingsMetadata();
-      setExistingMetadata(metadata[`${hour}_${index}.wav`]);
+      const metadata = await getPrayerRecordingMetadata(hour);
+      setExistingMetadata(metadata);
     } else {
-      alert('Failed to save recording.');
+      alert('Error al guardar la grabaci├│n.');
     }
   };
 
@@ -91,8 +106,14 @@ export function Recorder({ hour, index, onFinished }: RecorderProps) {
     setStatus(prev => prev === 'final' ? 'requires_rerecord' : 'final');
   };
 
+  const formatDuration = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${String(s).padStart(2, '0')}`;
+  };
+
   return (
-    <div className="flex flex-col gap-4 p-4 glass-panel border border-white/10 rounded-lg max-w-sm">
+    <div className="flex flex-col gap-4 p-5 glass-panel border border-white/10 rounded-lg max-w-md w-[90vw]">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-serif text-[var(--color-monastery-accent)]">Grabadora Lit├║rgica</h3>
         <div className="flex items-center gap-2">
@@ -102,11 +123,21 @@ export function Recorder({ hour, index, onFinished }: RecorderProps) {
                 ? 'border-red-500/50 text-red-400 bg-red-500/10' 
                 : 'border-green-500/50 text-green-400 bg-green-500/10'
             }`}>
-              {existingMetadata.status === 'requires_rerecord' ? 'Re-grabar' : 'Listo'}
+              {existingMetadata.status === 'requires_rerecord' ? 'Re-grabar' : 'Grabado'}
             </span>
           )}
         </div>
       </div>
+
+      <p className="text-[10px] opacity-50 uppercase tracking-wider">
+        {hour} {index > 0 ? `┬╖ Fragmento ${index + 1}` : ''}
+      </p>
+
+      {prayerText && (
+        <div className="max-h-24 overflow-y-auto text-[11px] opacity-60 leading-relaxed p-2 bg-black/20 rounded border border-white/5">
+          {prayerText.length > 300 ? prayerText.slice(0, 300) + '...' : prayerText}
+        </div>
+      )}
 
       {!audioBlob && !isRecording && (
         <button
@@ -124,7 +155,7 @@ export function Recorder({ hour, index, onFinished }: RecorderProps) {
           className="flex items-center justify-center gap-3 py-4 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors animate-pulse border border-white/30"
         >
           <Square size={20} fill="currentColor" />
-          <span className="font-medium uppercase tracking-widest text-xs">Detener</span>
+          <span className="font-medium uppercase tracking-widest text-xs">Detener ({formatDuration(recordingDuration)})</span>
         </button>
       )}
 
@@ -133,7 +164,7 @@ export function Recorder({ hour, index, onFinished }: RecorderProps) {
           <div className="flex items-center gap-3">
             <audio src={previewUrl!} controls className="flex-1 h-8 opacity-70" />
             <button 
-              onClick={() => { setAudioBlob(null); setPreviewUrl(null); }}
+              onClick={() => { setAudioBlob(null); setPreviewUrl(null); setRecordingDuration(0); }}
               className="p-2 hover:bg-white/10 rounded-full text-white/50 hover:text-white transition-colors"
               title="Descartar"
             >
@@ -167,7 +198,7 @@ export function Recorder({ hour, index, onFinished }: RecorderProps) {
       )}
 
       <p className="text-[10px] opacity-40 italic text-center">
-        {hour} - Fragmento {index + 1}
+        Esta grabaci├│n se reproducir├í autom├íticamente la pr├│xima vez que llegue {hour}
       </p>
     </div>
   );

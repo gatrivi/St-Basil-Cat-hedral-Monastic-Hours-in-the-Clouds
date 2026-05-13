@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Bell, Play, Pause, Volume2, VolumeX, Clock, AlertCircle, Copy, Check, Menu, X, Mic } from 'lucide-react';
+import { Bell, Play, Pause, Volume2, VolumeX, Clock, AlertCircle, Copy, Check, Menu, X, Mic, Waves } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import Markdown from 'react-markdown';
@@ -11,6 +11,7 @@ import { useCosmicResonator } from './sacred/useCosmicResonator';
 import { SacredDrawing } from './sacred/procedural-rose';
 import { generatePrayerText, generateAudioOrFallback, SpeechController } from './services/gemini';
 import { Recorder } from './components/Recorder';
+import { getPrayerRecordingMetadata } from './services/recordings';
 
 // Declare the version injected by Vite
 declare const __APP_VERSION__: string;
@@ -70,6 +71,10 @@ export default function App() {
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showRecorder, setShowRecorder] = useState(false);
+  const [ambientEnabled, setAmbientEnabled] = useState(() => {
+    try { return localStorage.getItem('cathedral-ambient') === 'true'; } catch { return false; }
+  });
+  const [hasRecording, setHasRecording] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const bellRef = useRef<HTMLAudioElement | null>(null);
@@ -137,7 +142,7 @@ export default function App() {
         if (text) syncAndPlay(curr, now);
       });
     }
-    initResonator(!isMuted);
+    initResonator(true);
   }, []);
 
   useEffect(() => {
@@ -146,6 +151,24 @@ export default function App() {
     events.forEach(e => window.addEventListener(e, markActive, { passive: true }));
     return () => events.forEach(e => window.removeEventListener(e, markActive));
   }, []);
+
+  // Unified resonator state: active when playing or ambient is on, unless muted
+  useEffect(() => {
+    const shouldBeActive = (isPlaying || ambientEnabled) && !isMuted;
+    if (shouldBeActive) startResonator();
+    else stopResonator();
+  }, [isPlaying, ambientEnabled, isMuted, startResonator, stopResonator]);
+
+  // Check if a user recording exists for the current hour
+  useEffect(() => {
+    if (!currentHour) {
+      setHasRecording(false);
+      return;
+    }
+    getPrayerRecordingMetadata(currentHour.name).then(meta => {
+      setHasRecording(meta?.status === 'final');
+    });
+  }, [currentHour]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -253,19 +276,18 @@ export default function App() {
               setIsPlaying(true);
               setIsLoadingAudio(false);
               setAutoplayBlocked(false);
-              startResonator();
             }).catch(() => {
               setIsLoadingAudio(false);
               setAutoplayBlocked(true);
             });
           };
         }
-      } else {
+      } else if (result.mode === 'speech') {
         const ctrl = result.controller;
         speechRef.current = ctrl;
-        ctrl.onPlay = () => { setIsPlaying(true); setIsLoadingAudio(false); setAutoplayBlocked(false); startResonator(); };
+        ctrl.onPlay = () => { setIsPlaying(true); setIsLoadingAudio(false); setAutoplayBlocked(false); };
         ctrl.onPause = () => { setIsPlaying(false); };
-        ctrl.onEnd = () => { setIsPlaying(false); stopResonator(); if (speechProgressTimer.current) { clearInterval(speechProgressTimer.current); speechProgressTimer.current = null; } };
+        ctrl.onEnd = () => { setIsPlaying(false); if (speechProgressTimer.current) { clearInterval(speechProgressTimer.current); speechProgressTimer.current = null; } };
         ctrl.onTimeUpdate = () => { setAudioProgress(ctrl.getCurrentTime()); setAudioDuration(ctrl.getDuration()); };
         speechProgressTimer.current = setInterval(() => { ctrl.onTimeUpdate?.(); }, 250);
         ctrl.play();
@@ -281,6 +303,37 @@ export default function App() {
     if (currentHour) syncAndPlay(currentHour, new Date());
   };
 
+  const toggleAmbient = useCallback(() => {
+    setAmbientEnabled(prev => {
+      const next = !prev;
+      try { localStorage.setItem('cathedral-ambient', String(next)); } catch {}
+      return next;
+    });
+  }, []);
+
+  const togglePlayPause = useCallback(() => {
+    if (autoplayBlocked) { handleManualStart(); return; }
+    if (speechRef.current) {
+      if (isPlaying) { speechRef.current.pause(); setIsPlaying(false); }
+      else { speechRef.current.play(); setIsPlaying(true); }
+      return;
+    }
+    if (!audioRef.current) return;
+    if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); }
+    else if (audioRef.current.src) { audioRef.current.play(); setIsPlaying(true); }
+    else if (currentHour) { playHour(currentHour); }
+  }, [isPlaying, currentHour, fullPrayerText, autoplayBlocked]);
+
+  const toggleMute = useCallback(() => {
+    setIsMuted(prev => {
+      const next = !prev;
+      if (audioRef.current) audioRef.current.muted = next;
+      if (bellRef.current) bellRef.current.muted = next;
+      if (speechRef.current) { if (next) speechRef.current.pause(); else if (isPlaying) speechRef.current.play(); }
+      return next;
+    });
+  }, [isPlaying]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) return;
@@ -292,35 +345,12 @@ export default function App() {
         case 'ArrowLeft': e.preventDefault(); goToPrevFragment(); break;
         case 'r': case 'R': if (currentHour) loadHourText(currentHour); break;
         case 'v': case 'V': setShowRecorder(prev => !prev); break;
+        case 'a': case 'A': toggleAmbient(); break;
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, isLoadingAudio, isLoadingText, isMuted, currentHour, handleCopy, goToNextFragment, goToPrevFragment]);
-
-  const togglePlayPause = useCallback(() => {
-    if (autoplayBlocked) { handleManualStart(); return; }
-    if (speechRef.current) {
-      if (isPlaying) { speechRef.current.pause(); setIsPlaying(false); stopResonator(); }
-      else { speechRef.current.play(); setIsPlaying(true); startResonator(); }
-      return;
-    }
-    if (!audioRef.current) return;
-    if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); }
-    else if (audioRef.current.src) { audioRef.current.play(); setIsPlaying(true); }
-    else if (currentHour) { playHour(currentHour); }
-  }, [isPlaying, currentHour, fullPrayerText, autoplayBlocked, startResonator, stopResonator]);
-
-  const toggleMute = useCallback(() => {
-    setIsMuted(prev => {
-      const next = !prev;
-      if (audioRef.current) audioRef.current.muted = next;
-      if (bellRef.current) bellRef.current.muted = next;
-      if (speechRef.current) { if (next) speechRef.current.pause(); else if (isPlaying) speechRef.current.play(); }
-      if (next) stopResonator(); else if (isPlaying) startResonator();
-      return next;
-    });
-  }, [isPlaying, startResonator, stopResonator]);
+  }, [isPlaying, isLoadingAudio, isLoadingText, isMuted, currentHour, handleCopy, goToNextFragment, goToPrevFragment, toggleAmbient]);
 
   useEffect(() => {
     return () => { cleanupSpeech(); cleanupResonator(); };
@@ -336,7 +366,7 @@ export default function App() {
     <div className="h-screen flex overflow-hidden relative cursor-default" onClick={() => { if (autoplayBlocked) handleManualStart(); }}>
       <BackgroundLayers currentHour={currentHour} />
       <audio ref={bellRef} src={BELL_SOUND_URL} preload="auto" />
-      <audio ref={audioRef} onEnded={() => { setIsPlaying(false); stopResonator(); }} onPause={() => setIsPlaying(false)} onPlay={() => setIsPlaying(true)} onTimeUpdate={(e) => { const audio = e.currentTarget; if (audio.duration) { setAudioProgress(audio.currentTime); setAudioDuration(audio.duration); } }} onLoadedMetadata={(e) => setAudioDuration(e.currentTarget.duration || 0)} />
+      <audio ref={audioRef} onEnded={() => { setIsPlaying(false); }} onPause={() => setIsPlaying(false)} onPlay={() => setIsPlaying(true)} onTimeUpdate={(e) => { const audio = e.currentTarget; if (audio.duration) { setAudioProgress(audio.currentTime); setAudioDuration(audio.duration); } }} onLoadedMetadata={(e) => setAudioDuration(e.currentTarget.duration || 0)} />
 
       <header className="md:hidden fixed top-0 left-0 right-0 z-40 glass-panel border-b border-[var(--color-monastery-accent)]/10 h-14 flex items-center justify-between px-4">
         <button onClick={(e) => { e.stopPropagation(); setSidebarOpen(!sidebarOpen); }} className="p-2 opacity-60 hover:opacity-100 transition-opacity">
@@ -402,7 +432,7 @@ export default function App() {
           <AnimatePresence>
             {showRecorder && currentHour && (
               <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="absolute z-50">
-                <Recorder hour={currentHour.name} index={fragmentIndex} onFinished={() => setShowRecorder(false)} />
+                <Recorder hour={currentHour.name} index={fragmentIndex} prayerText={fullPrayerText} onFinished={() => setShowRecorder(false)} />
               </motion.div>
             )}
           </AnimatePresence>
@@ -496,9 +526,17 @@ export default function App() {
             {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
           </button>
           
+          {/* Ambient Toggle */}
+          <button onClick={toggleAmbient} className={`hover:text-[var(--color-monastery-accent)] transition-colors shrink-0 opacity-70 hover:opacity-100 ${ambientEnabled ? 'text-[var(--color-monastery-accent)] opacity-100' : ''}`} title="Sonido Ambiente (A)">
+            <Waves size={14} />
+          </button>
+
           {/* Recorder Toggle */}
-          <button onClick={() => setShowRecorder(!showRecorder)} className={`hover:text-[var(--color-monastery-accent)] transition-colors shrink-0 opacity-70 hover:opacity-100 ${showRecorder ? 'text-[var(--color-monastery-accent)] opacity-100' : ''}`} title="Grabar Voz (V)">
+          <button onClick={() => setShowRecorder(!showRecorder)} className={`hover:text-[var(--color-monastery-accent)] transition-colors shrink-0 opacity-70 hover:opacity-100 ${showRecorder ? 'text-[var(--color-monastery-accent)] opacity-100' : ''} ${hasRecording ? 'relative' : ''}`} title="Grabar Voz (V)">
             <Mic size={14} />
+            {hasRecording && !showRecorder && (
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-green-500" />
+            )}
           </button>
 
           <div className="hidden md:block opacity-30 hover:opacity-70 transition-opacity shrink-0">
