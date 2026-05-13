@@ -64,7 +64,7 @@ export async function generatePrayerText(hourName: HourName, date: Date): Promis
 }
 
 // ─── Audio Generation (Local Piper TTS) ───
-const TTS_SERVER = (import.meta as any).env?.VITE_TTS_SERVER_URL || 'http://localhost:3001';
+const TTS_SERVER = (import.meta as any).env?.VITE_TTS_SERVER_URL || 'http://127.0.0.1:3001';
 
 export async function generatePrayerAudio(text: string): Promise<string> {
   const res = await fetch(`${TTS_SERVER}/tts`, {
