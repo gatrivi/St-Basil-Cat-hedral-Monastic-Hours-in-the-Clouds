@@ -63,27 +63,22 @@ export async function generatePrayerText(hourName: HourName, date: Date): Promis
   }
 }
 
-// ─── Audio Generation (Gemini TTS) ───
+// ─── Audio Generation (Local Piper TTS) ───
 export async function generatePrayerAudio(text: string): Promise<string> {
-  const ai = await getAI();
-  const response = await ai.models.generateContent({
-    model: 'gemini-1.5-flash',
-    contents: [{ parts: [{ text }] }],
-    config: {
-      responseModalities: [Modality.AUDIO],
-      speechConfig: {
-        voiceConfig: {
-          prebuiltVoiceConfig: { voiceName: 'Charon' },
-        },
-      },
-    },
+  const res = await fetch('http://localhost:3001/tts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
   });
+  if (!res.ok) throw new Error('TTS failed');
 
-  const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-  if (!base64Audio) {
-    throw new Error('No audio data received');
-  }
-  return base64Audio;
+  const blob = await res.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 }
 
 // ─── Web Speech API Fallback ───
@@ -112,10 +107,11 @@ export function createSpeechController(text: string): SpeechController {
   utterance.volume = 1;
 
   const voices = speechSynthesis.getVoices();
-  const preferred = voices.find(v => v.name.includes('Google UK English Male'))
-    || voices.find(v => v.name.includes('Daniel'))
-    || voices.find(v => v.name.includes('Fred'))
-    || voices.find(v => v.lang.startsWith('en') && v.name.includes('Male'))
+  const preferred = voices.find(v => v.lang.startsWith('es') && v.name.includes('Google'))
+    || voices.find(v => v.lang.startsWith('es') && v.name.includes('Diego'))
+    || voices.find(v => v.lang.startsWith('es') && v.name.includes('Jorge'))
+    || voices.find(v => v.lang.startsWith('es') && v.name.includes('Male'))
+    || voices.find(v => v.lang.startsWith('es'))
     || voices.find(v => v.lang.startsWith('en'));
   if (preferred) utterance.voice = preferred;
 
@@ -199,10 +195,10 @@ export function createSpeechController(text: string): SpeechController {
 // ─── Convenience: try Gemini audio, fallback to Web Speech ───
 export async function generateAudioOrFallback(
   text: string
-): Promise<{ mode: 'gemini'; base64: string } | { mode: 'speech'; controller: SpeechController }> {
+): Promise<{ mode: 'piper'; base64: string } | { mode: 'speech'; controller: SpeechController }> {
   try {
     const base64 = await generatePrayerAudio(text);
-    return { mode: 'gemini', base64 };
+    return { mode: 'piper', base64 };
   } catch (err) {
     console.warn('[Cathedral] Gemini TTS failed, using browser speech:', err);
     const controller = createSpeechController(text);

@@ -9,7 +9,7 @@ import { getFragmentForHour, LiturgicalFragment, FRAGMENTS_BY_HOUR } from './lib
 import { useBackground } from './lib/backgrounds';
 import { useCosmicResonator } from './sacred/useCosmicResonator';
 import { SacredDrawing } from './sacred/procedural-rose';
-import { generatePrayerText, generatePrayerAudio } from './services/gemini';
+import { generatePrayerText, generateAudioOrFallback, SpeechController } from './services/gemini';
 
 // Declare the version injected by Vite
 declare const __APP_VERSION__: string;
@@ -84,6 +84,8 @@ export default function App() {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const bellRef = useRef<HTMLAudioElement | null>(null);
+  const speechRef = useRef<SpeechController | null>(null);
+  const speechProgressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const touchStartX = useRef<number | null>(null);
 
   const lastPlayedHourRef = useRef<string | null>(null);
@@ -224,6 +226,18 @@ export default function App() {
     await playHour(hour, false, offsetSeconds);
   };
 
+  // Cleanup speech controller and its timer
+  const cleanupSpeech = useCallback(() => {
+    if (speechProgressTimer.current) {
+      clearInterval(speechProgressTimer.current);
+      speechProgressTimer.current = null;
+    }
+    if (speechRef.current) {
+      speechRef.current.stop();
+      speechRef.current = null;
+    }
+  }, []);
+
   const loadHourText = async (hour: LiturgicalHour) => {
     console.log(`[DEBUG] App: loadHourText started for ${hour.name}`);
     if (isLoadingText) return;
@@ -244,7 +258,7 @@ export default function App() {
     }
   };
 
-  const playHour = async (hour: LiturgicalHour, fadeIn: boolean = false, startOffset: number = 0) => {
+  const playHour = async (hour: LiturgicalHour, _fadeIn: boolean = false, startOffset: number = 0) => {
     console.log(`[DEBUG] App: playHour started for ${hour.name} at offset ${startOffset}s`);
     if (isPlaying || isLoadingAudio) return;
 
@@ -255,16 +269,20 @@ export default function App() {
     }
 
     setIsLoadingAudio(true);
+    cleanupSpeech();
+
     try {
-      const audioBase64 = await generatePrayerAudio(text);
-      const audioUrl = `data:audio/wav;base64,${audioBase64}`;
+      const result = await generateAudioOrFallback(text);
 
-      if (audioRef.current) {
-        audioRef.current.src = audioUrl;
-        audioRef.current.muted = isMuted;
+      if (result.mode === 'piper') {
+        const audioUrl = `data:audio/wav;base64,${result.base64}`;
 
-        audioRef.current.onloadedmetadata = () => {
-          if (audioRef.current) {
+        if (audioRef.current) {
+          audioRef.current.src = audioUrl;
+          audioRef.current.muted = isMuted;
+
+          audioRef.current.onloadedmetadata = () => {
+            if (!audioRef.current) return;
             const duration = audioRef.current.duration;
             if (startOffset > 0 && startOffset < duration) {
               audioRef.current.currentTime = startOffset;
@@ -284,10 +302,42 @@ export default function App() {
               setIsLoadingAudio(false);
               setAutoplayBlocked(true);
             });
+          };
+        }
+      } else {
+        // Speech fallback mode
+        const ctrl = result.controller;
+        speechRef.current = ctrl;
+
+        ctrl.onPlay = () => {
+          setIsPlaying(true);
+          setIsLoadingAudio(false);
+          setAutoplayBlocked(false);
+          startResonator();
+        };
+        ctrl.onPause = () => {
+          setIsPlaying(false);
+        };
+        ctrl.onEnd = () => {
+          setIsPlaying(false);
+          stopResonator();
+          if (speechProgressTimer.current) {
+            clearInterval(speechProgressTimer.current);
+            speechProgressTimer.current = null;
           }
         };
-      }
+        ctrl.onTimeUpdate = () => {
+          setAudioProgress(ctrl.getCurrentTime());
+          setAudioDuration(ctrl.getDuration());
+        };
 
+        // Start progress polling
+        speechProgressTimer.current = setInterval(() => {
+          ctrl.onTimeUpdate?.();
+        }, 250);
+
+        ctrl.play();
+      }
     } catch (err) {
       console.error('[DEBUG] App: playHour error:', err);
       setIsLoadingAudio(false);
@@ -341,11 +391,26 @@ export default function App() {
   }, [isPlaying, isLoadingAudio, isLoadingText, isMuted, currentHour, handleCopy, goToNextFragment, goToPrevFragment]);
 
   const togglePlayPause = useCallback(() => {
-    if (!audioRef.current) return;
     if (autoplayBlocked) {
       handleManualStart();
       return;
     }
+
+    // Speech fallback mode
+    if (speechRef.current) {
+      if (isPlaying) {
+        speechRef.current.pause();
+        setIsPlaying(false);
+        stopResonator();
+      } else {
+        speechRef.current.play();
+        setIsPlaying(true);
+        startResonator();
+      }
+      return;
+    }
+
+    if (!audioRef.current) return;
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
@@ -355,13 +420,21 @@ export default function App() {
     } else if (currentHour) {
       playHour(currentHour);
     }
-  }, [isPlaying, currentHour, fullPrayerText, autoplayBlocked]);
+  }, [isPlaying, currentHour, fullPrayerText, autoplayBlocked, startResonator, stopResonator]);
 
   const toggleMute = useCallback(() => {
     setIsMuted(prev => {
       const next = !prev;
       if (audioRef.current) audioRef.current.muted = next;
       if (bellRef.current) bellRef.current.muted = next;
+      // Speech synthesis doesn't have a native mute; we stop/resume
+      if (speechRef.current) {
+        if (next) {
+          speechRef.current.pause();
+        } else if (isPlaying) {
+          speechRef.current.play();
+        }
+      }
       if (next) {
         stopResonator();
       } else if (isPlaying) {
@@ -381,10 +454,13 @@ export default function App() {
     );
   }, []);
 
-  // Cleanup resonator on unmount
+  // Cleanup resonator and speech on unmount
   useEffect(() => {
-    return () => cleanupResonator();
-  }, [cleanupResonator]);
+    return () => {
+      cleanupSpeech();
+      cleanupResonator();
+    };
+  }, [cleanupResonator, cleanupSpeech]);
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -524,12 +600,23 @@ export default function App() {
 
         {/* Footer */}
         <div className="p-4 border-t border-white/5 text-center opacity-40 hover:opacity-100 transition-opacity duration-500">
-          <p className="text-[10px] uppercase tracking-widest">
+          <p className="text-[10px] uppercase tracking-widest flex items-center justify-center gap-2">
             <a href="https://gatrivi.com" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-monastery-accent)] transition-colors">
               Gatrivi
             </a>
-            <span className="mx-2 opacity-50">|</span>
+            <span className="opacity-50">|</span>
             <span className="opacity-50">v{__APP_VERSION__}</span>
+            {/* Dove — voice-ready indicator */}
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              className="text-[var(--color-monastery-accent)] opacity-70"
+            >
+              <title>Voz local lista</title>
+              <path d="M21.4 10.6c-.4-.4-.9-.6-1.4-.6h-.3c-1.2-2.3-3.6-4-6.4-4.3-1-.1-1.9.1-2.7.5-.5-1.2-1.7-2.1-3.1-2.2-1.9-.1-3.5 1.3-3.6 3.2 0 .3 0 .5.1.8-1.6.5-2.9 1.6-3.6 3.1-.2.4-.3.9-.3 1.4 0 1.5.9 2.8 2.2 3.4-.1.4-.2.8-.2 1.3 0 2.5 2 4.5 4.5 4.5.6 0 1.1-.1 1.6-.3.9 1.4 2.4 2.3 4.1 2.3 2.3 0 4.2-1.6 4.7-3.8.3 0 .5.1.8.1 1.7 0 3-1.3 3-3 0-.4-.1-.8-.2-1.1.7-.5 1.2-1.4 1.2-2.4 0-.9-.4-1.7-1-2.3z"/>
+            </svg>
           </p>
         </div>
       </aside>
