@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, Square, Save, Trash2, AlertCircle, Check, RotateCcw } from 'lucide-react';
+import { Mic, Square, Save, Trash2, AlertCircle, Check, RotateCcw, X } from 'lucide-react';
 import { uploadPrayerRecording, getPrayerRecordingMetadata, RecordingMetadata } from '../services/recordings';
 
 interface RecorderProps {
@@ -7,9 +7,10 @@ interface RecorderProps {
   index: number;
   prayerText?: string;
   onFinished?: () => void;
+  onClose?: () => void;
 }
 
-export function Recorder({ hour, index, prayerText, onFinished }: RecorderProps) {
+export function Recorder({ hour, index, prayerText, onFinished, onClose }: RecorderProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -125,6 +126,15 @@ export function Recorder({ hour, index, prayerText, onFinished }: RecorderProps)
             }`}>
               {existingMetadata.status === 'requires_rerecord' ? 'Re-grabar' : 'Grabado'}
             </span>
+          )}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="p-1 hover:bg-white/10 rounded-full text-white/50 hover:text-white transition-colors"
+              title="Cerrar"
+            >
+              <X size={14} />
+            </button>
           )}
         </div>
       </div>

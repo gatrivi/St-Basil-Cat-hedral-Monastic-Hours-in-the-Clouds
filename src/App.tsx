@@ -431,8 +431,21 @@ export default function App() {
           {/* Recorder Overlay */}
           <AnimatePresence>
             {showRecorder && currentHour && (
-              <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="absolute z-50">
-                <Recorder hour={currentHour.name} index={fragmentIndex} prayerText={fullPrayerText} onFinished={() => setShowRecorder(false)} />
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+                onClick={() => setShowRecorder(false)}
+              >
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Recorder hour={currentHour.name} index={fragmentIndex} prayerText={fullPrayerText} onFinished={() => setShowRecorder(false)} onClose={() => setShowRecorder(false)} />
+                </motion.div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -527,15 +540,17 @@ export default function App() {
           </button>
           
           {/* Ambient Toggle */}
-          <button onClick={toggleAmbient} className={`hover:text-[var(--color-monastery-accent)] transition-colors shrink-0 opacity-70 hover:opacity-100 ${ambientEnabled ? 'text-[var(--color-monastery-accent)] opacity-100' : ''}`} title="Sonido Ambiente (A)">
-            <Waves size={14} />
+          <button onClick={toggleAmbient} className={`flex items-center gap-1 p-1.5 rounded-full hover:bg-white/10 hover:text-[var(--color-monastery-accent)] transition-all shrink-0 ${ambientEnabled ? 'text-[var(--color-monastery-accent)] opacity-100' : 'opacity-70 hover:opacity-100'}`} title="Sonido Ambiente (A)">
+            <Waves size={16} />
+            <span className="hidden md:inline text-[10px] uppercase tracking-wider">Ambiente</span>
           </button>
 
           {/* Recorder Toggle */}
-          <button onClick={() => setShowRecorder(!showRecorder)} className={`hover:text-[var(--color-monastery-accent)] transition-colors shrink-0 opacity-70 hover:opacity-100 ${showRecorder ? 'text-[var(--color-monastery-accent)] opacity-100' : ''} ${hasRecording ? 'relative' : ''}`} title="Grabar Voz (V)">
-            <Mic size={14} />
+          <button onClick={() => setShowRecorder(!showRecorder)} className={`flex items-center gap-1 p-1.5 rounded-full hover:bg-white/10 hover:text-[var(--color-monastery-accent)] transition-all shrink-0 ${showRecorder ? 'text-[var(--color-monastery-accent)] opacity-100' : 'opacity-70 hover:opacity-100'} ${hasRecording ? 'relative' : ''}`} title="Grabar Voz (V)">
+            <Mic size={16} />
+            <span className="hidden md:inline text-[10px] uppercase tracking-wider">Voz</span>
             {hasRecording && !showRecorder && (
-              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-green-500" />
+              <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-green-500" />
             )}
           </button>
 
