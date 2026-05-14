@@ -11,6 +11,7 @@ import { useCosmicResonator } from './sacred/useCosmicResonator';
 import { SacredDrawing } from './sacred/procedural-rose';
 import { generatePrayerText, generateAudioOrFallback, SpeechController } from './services/gemini';
 import { Recorder } from './components/Recorder';
+import { AutoPager } from './components/AutoPager';
 import { getPrayerRecordingMetadata } from './services/recordings';
 
 // Declare the version injected by Vite
@@ -426,7 +427,7 @@ export default function App() {
       {sidebarOpen && <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />}
 
       <main className="flex-1 flex flex-col relative min-w-0 pt-14 md:pt-0" onTouchStart={(e) => { touchStartX.current = e.changedTouches[0].screenX; }} onTouchEnd={(e) => { if (touchStartX.current == null) return; const diff = touchStartX.current - e.changedTouches[0].screenX; if (Math.abs(diff) > 50) { if (diff > 0) goToNextFragment(); else goToPrevFragment(); } touchStartX.current = null; }}>
-        <div className="flex-1 overflow-y-auto flex flex-col items-center justify-center p-6 md:p-12 lg:p-20 relative">
+        <div className="flex-1 overflow-hidden flex flex-col items-center justify-center p-6 md:p-12 lg:p-20 relative">
           
           {/* Recorder Overlay */}
           <AnimatePresence>
@@ -450,7 +451,7 @@ export default function App() {
             )}
           </AnimatePresence>
 
-          <div className="w-full max-w-3xl relative group">
+          <div className="w-full max-w-3xl h-full relative group">
             {fragment && (
               <button onClick={(e) => { e.stopPropagation(); handleCopy(); }} className="absolute -top-2 right-0 opacity-0 group-hover:opacity-40 hover:!opacity-100 transition-all p-2 z-10" title="Copiar Liturgia (C)">
                 {isCopied ? <Check size={14} /> : <Copy size={14} />}
@@ -468,7 +469,7 @@ export default function App() {
               {usingFallback && (
                 <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="absolute -top-6 left-1/2 -translate-x-1/2 flex items-center gap-2 text-[10px] uppercase tracking-widest text-[var(--color-monastery-accent)] opacity-70">
                   <AlertCircle size={10} />
-                  <span>{error || 'Mostrando la ├║ltima oraci├│n disponible'}</span>
+                  <span>{error || 'Mostrando la última oración disponible'}</span>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -478,16 +479,16 @@ export default function App() {
                 <button
                   onClick={(e) => { e.stopPropagation(); goToPrevFragment(); }}
                   className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 md:-translate-x-12 opacity-20 md:opacity-0 group-hover:opacity-40 hover:!opacity-100 focus:opacity-100 focus:outline-none focus:scale-110 transition-all p-4 z-20"
-                  title="Fragmento anterior (ΓåÉ)"
+                  title="Fragmento anterior (←)"
                 >
-                  <span className="text-3xl font-serif">ΓÇ╣</span>
+                  <span className="text-3xl font-serif">‹</span>
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); goToNextFragment(); }}
                   className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 md:translate-x-12 opacity-20 md:opacity-0 group-hover:opacity-40 hover:!opacity-100 focus:opacity-100 focus:outline-none focus:scale-110 transition-all p-4 z-20"
-                  title="Siguiente fragmento (ΓåÆ)"
+                  title="Siguiente fragmento (→)"
                 >
-                  <span className="text-3xl font-serif">ΓÇ║</span>
+                  <span className="text-3xl font-serif">›</span>
                 </button>
                 <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-3 opacity-30 group-hover:opacity-60 transition-opacity">
                   {FRAGMENTS_BY_HOUR[currentHour.name]?.map((_, i) => (
@@ -508,21 +509,25 @@ export default function App() {
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 1.02 }}
                   transition={{ duration: 0.8, ease: [0.4, 0, 0.2, 1] }}
-                  className="space-y-6 md:space-y-10 py-10"
+                  className="h-full"
                 >
-                  <div className="space-y-3">
-                    <h2 className="font-serif text-3xl sm:text-4xl md:text-5xl lg:text-6xl text-[var(--color-monastery-accent)] text-center tracking-tight leading-tight">
-                      {fragment.title}
-                    </h2>
-                    {fragment.subtitle && (
-                      <p className="text-[10px] sm:text-xs md:text-sm uppercase tracking-[0.4em] opacity-50 text-center">
-                        {fragment.subtitle}
-                      </p>
-                    )}
-                  </div>
-                  <div className="font-serif text-lg sm:text-xl md:text-2xl lg:text-3xl leading-relaxed sm:leading-relaxed md:leading-[1.7] lg:leading-[1.8] text-center markdown-body max-w-2xl mx-auto">
-                    <Markdown>{fragment.text}</Markdown>
-                  </div>
+                  <AutoPager isActive={!isLoadingAudio && !isLoadingText}>
+                    <div className="space-y-6 md:space-y-10 py-10">
+                      <div className="space-y-3">
+                        <h2 className="font-serif text-3xl sm:text-4xl md:text-5xl lg:text-6xl text-[var(--color-monastery-accent)] text-center tracking-tight leading-tight">
+                          {fragment.title}
+                        </h2>
+                        {fragment.subtitle && (
+                          <p className="text-[10px] sm:text-xs md:text-sm uppercase tracking-[0.4em] opacity-50 text-center">
+                            {fragment.subtitle}
+                          </p>
+                        )}
+                      </div>
+                      <div className="font-serif text-lg sm:text-xl md:text-2xl lg:text-3xl leading-relaxed sm:leading-relaxed md:leading-[1.7] lg:leading-[1.8] text-center markdown-body max-w-2xl mx-auto">
+                        <Markdown>{fragment.text}</Markdown>
+                      </div>
+                    </div>
+                  </AutoPager>
                 </motion.div>
               ) : (
                 <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center justify-center opacity-30 font-serif italic gap-4 py-20"><Bell size={24} /><p className="text-lg">Entrando a la Capilla...</p></motion.div>
