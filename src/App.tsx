@@ -84,6 +84,36 @@ export default function App() {
   const touchStartX = useRef<number | null>(null);
   const lastPlayedHourRef = useRef<string | null>(null);
 
+  const [readingProgress, setReadingProgress] = useState(0);
+
+  useEffect(() => {
+    if (!isPlaying || !fragment) {
+      setReadingProgress(0);
+      return;
+    }
+
+    // Slow "viejita" reading speed: 70 words per minute
+    const wordCount = fragment.text.trim().split(/\s+/).length;
+    const estimatedSeconds = (wordCount / 70) * 60;
+    const duration = Math.max(20000, estimatedSeconds * 1000);
+
+    let start: number | null = null;
+    let animationFrame: number;
+
+    const animate = (timestamp: number) => {
+      if (!start) start = timestamp;
+      const elapsed = timestamp - start;
+      const progress = Math.min(1.05, elapsed / duration);
+      setReadingProgress(progress);
+      if (progress < 1.05) {
+        animationFrame = requestAnimationFrame(animate);
+      }
+    };
+
+    animationFrame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationFrame);
+  }, [isPlaying, fragment]);
+
   const { init: initResonator, start: startResonator, stop: stopResonator, playBell: playResonatorBell, cleanup: cleanupResonator } = useCosmicResonator();
   const lastInteractionRef = useRef<number>(Date.now());
   const lastAutoRotationRef = useRef<number>(Date.now());
@@ -380,7 +410,10 @@ export default function App() {
         <div className="w-8" />
       </header>
 
-      <aside className={`fixed md:static inset-y-0 left-0 z-40 w-72 glass-panel border-r border-[var(--color-monastery-accent)]/10 flex flex-col transition-transform duration-500 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} pt-14 md:pt-0`}>
+      <aside 
+        className={`fixed md:static inset-y-0 left-0 z-40 w-72 glass-panel border-r border-[var(--color-monastery-accent)]/10 flex flex-col transition-transform duration-500 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} pt-14 md:pt-0 giant-wheel-sidebar`}
+        style={{ transform: `rotate(${readingProgress * -5}deg)` }}
+      >
         <div className="hidden md:block p-6 text-center border-b border-white/5">
           <motion.h1 key={format(currentTime, 'HH:mm')} initial={{ opacity: 0.5 }} animate={{ opacity: 1 }} transition={{ duration: 1.5 }} className="font-serif text-4xl text-[var(--color-monastery-accent)]">{format(currentTime, 'HH:mm')}</motion.h1>
           <p className="text-xs uppercase tracking-[0.3em] opacity-60 mt-1">{format(currentTime, "EEEE, d 'de' MMMM", { locale: es })}</p>
@@ -509,24 +542,10 @@ export default function App() {
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 1.02 }}
                   transition={{ duration: 0.8, ease: [0.4, 0, 0.2, 1] }}
-                  className="h-full"
+                  className="h-full w-full"
                 >
-                  <AutoPager isActive={!isLoadingAudio && !isLoadingText}>
-                    <div className="space-y-6 md:space-y-10 py-10">
-                      <div className="space-y-3">
-                        <h2 className="font-serif text-3xl sm:text-4xl md:text-5xl lg:text-6xl text-[var(--color-monastery-accent)] text-center tracking-tight leading-tight">
-                          {fragment.title}
-                        </h2>
-                        {fragment.subtitle && (
-                          <p className="text-[10px] sm:text-xs md:text-sm uppercase tracking-[0.4em] opacity-50 text-center">
-                            {fragment.subtitle}
-                          </p>
-                        )}
-                      </div>
-                      <div className="font-serif text-lg sm:text-xl md:text-2xl lg:text-3xl leading-relaxed sm:leading-relaxed md:leading-[1.7] lg:leading-[1.8] text-center markdown-body max-w-2xl mx-auto">
-                        <Markdown>{fragment.text}</Markdown>
-                      </div>
-                    </div>
+                  <AutoPager progress={readingProgress}>
+                    {fragment.text}
                   </AutoPager>
                 </motion.div>
               ) : (

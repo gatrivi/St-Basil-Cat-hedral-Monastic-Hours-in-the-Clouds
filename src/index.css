@@ -95,6 +95,38 @@ body {
   background: var(--color-monastery-accent);
 }
 
+/* Giant Wheel Motion */
+.giant-wheel-container {
+  perspective: 1000px;
+}
+
+.giant-wheel-sidebar {
+  transform-origin: 2500px 50%; /* Center of the wheel far to the right */
+  transition: transform 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.giant-wheel-content {
+  transform-origin: 50% 5000px; /* Center of the wheel far below */
+}
+
+/* Character highlight helper */
+.char-base {
+  color: var(--color-monastery-muted);
+  position: relative;
+  display: inline;
+}
+
+.char-highlight {
+  color: var(--color-monastery-accent);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0%;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: width 0.1s linear;
+}
+
 /* Markdown styles */
 .markdown-body h1, .markdown-body h2, .markdown-body h3 {
   color: inherit;

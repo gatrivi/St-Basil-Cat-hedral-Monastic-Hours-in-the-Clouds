@@ -1,140 +1,100 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
-import { motion } from 'motion/react';
+import { motion, useSpring, useTransform } from 'motion/react';
+import Markdown from 'react-markdown';
 
 interface AutoPagerProps {
-  children: React.ReactNode;
-  isActive?: boolean;
+  children: string;
+  progress: number;
 }
 
-export const AutoPager: React.FC<AutoPagerProps> = ({ children, isActive = true }) => {
+// Recursive component to wrap characters and preserve progress
+const CharReveal = ({ children, progress, context }: { children: React.ReactNode, progress: number, context: { charCount: number, total: number } }) => {
+  return React.Children.map(children, child => {
+    if (typeof child === 'string') {
+      const chars = child.split('');
+      const start = context.charCount;
+      context.charCount += chars.length;
+      return chars.map((char, i) => {
+        const isHighlighted = progress >= (start + i) / context.total;
+        return (
+          <span 
+            key={start + i} 
+            style={{ 
+              color: isHighlighted ? 'var(--color-monastery-accent)' : 'var(--color-monastery-muted)',
+              transition: 'color 0.2s ease-out'
+            }}
+          >
+            {char}
+          </span>
+        );
+      });
+    }
+    if (React.isValidElement(child)) {
+      return React.cloneElement(child as React.ReactElement<any>, {
+        children: <CharReveal progress={progress} context={context}>{child.props.children}</CharReveal>
+      });
+    }
+    return child;
+  });
+};
+
+export const AutoPager: React.FC<AutoPagerProps> = ({ children, progress }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const [pages, setPages] = useState<number>(1);
-  const [currentPage, setCurrentPage] = useState(0);
+  const [contentHeight, setContentHeight] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
 
-  const [progress, setProgress] = useState(0);
-
-  const calculatePages = () => {
-    if (containerRef.current && contentRef.current) {
-      const containerH = containerRef.current.clientHeight;
-      const contentH = contentRef.current.scrollHeight;
-      
-      setContainerHeight(containerH);
-
-      if (contentH > containerH && containerH > 0) {
-        const numPages = Math.ceil(contentH / containerH);
-        setPages(numPages);
-      } else {
-        setPages(1);
-        setCurrentPage(0);
-      }
-    }
-  };
+  const radius = 5000;
+  const totalChars = children.length;
 
   useLayoutEffect(() => {
-    calculatePages();
-    
-    const observer = new ResizeObserver(() => {
-      calculatePages();
-    });
-
-    if (containerRef.current) {
-      observer.observe(containerRef.current);
+    if (containerRef.current && contentRef.current) {
+      setContainerHeight(containerRef.current.clientHeight);
+      setContentHeight(contentRef.current.scrollHeight);
     }
-
+    const observer = new ResizeObserver(() => {
+      if (containerRef.current && contentRef.current) {
+        setContainerHeight(containerRef.current.clientHeight);
+        setContentHeight(contentRef.current.scrollHeight);
+      }
+    });
+    if (containerRef.current) observer.observe(containerRef.current);
     return () => observer.disconnect();
   }, [children]);
 
-  useEffect(() => {
-    if (!isActive || pages <= 1) {
-      setCurrentPage(0);
-      setProgress(0);
-      return;
-    }
+  const rotationAngle = (contentHeight * progress) / radius * (180 / Math.PI);
+  const translateY = -progress * contentHeight * 0.7; // Keep reading area visible
 
-    const text = contentRef.current?.innerText || '';
-    const wordCount = text.trim().split(/\s+/).length;
-    const estimatedTotalSeconds = (wordCount / 120) * 60;
-    const timePerPage = Math.max(10000, (estimatedTotalSeconds * 1000) / pages);
-
-    let start: number | null = null;
-    let animationFrame: number;
-
-    const animate = (timestamp: number) => {
-      if (!start) start = timestamp;
-      const elapsed = timestamp - start;
-      const newProgress = Math.min(1, elapsed / timePerPage);
-      
-      setProgress(newProgress);
-
-      if (elapsed < timePerPage) {
-        animationFrame = requestAnimationFrame(animate);
-      } else {
-        setCurrentPage((prev) => (prev + 1) % pages);
-        start = null; // Reset for next page
-        animationFrame = requestAnimationFrame(animate);
-      }
-    };
-
-    animationFrame = requestAnimationFrame(animate);
-
-    return () => cancelAnimationFrame(animationFrame);
-  }, [isActive, pages, children]);
+  // Reset character count for each render
+  const context = { charCount: 0, total: totalChars };
 
   return (
-    <div 
-      ref={containerRef} 
-      className="relative overflow-hidden w-full h-full"
-      style={{ '--reading-progress': `${progress * 100}%` } as React.CSSProperties}
-    >
+    <div ref={containerRef} className="relative overflow-hidden w-full h-full flex flex-col items-center justify-start pt-[35vh]">
       <motion.div
-        animate={{ y: -currentPage * containerHeight }}
-        transition={{ 
-          duration: 1.5, 
-          ease: [0.4, 0, 0.2, 1],
-          type: "spring",
-          stiffness: 50,
-          damping: 15
+        animate={{ 
+          rotate: -rotationAngle,
+          y: translateY
         }}
-        className={`w-full ${pages === 1 ? 'min-h-full flex flex-col justify-center' : ''} relative`}
+        transition={{ duration: 0.1, ease: "linear" }}
+        style={{ 
+          transformOrigin: `50% ${radius}px`,
+          width: '100%'
+        }}
+        className="relative"
       >
-        {/* Base Layer (White/Muted text) */}
-        <div ref={contentRef} className="w-full opacity-40">
-          {children}
-        </div>
-
-        {/* Highlight Layer (Gold text) */}
-        <div 
-          className="absolute inset-0 w-full select-none pointer-events-none text-[var(--color-monastery-accent)]"
-          style={{ 
-            clipPath: `inset(0 0 ${100 - (progress * 100)}% 0)`,
-            display: pages === 1 ? 'flex' : 'block',
-            flexDirection: 'column',
-            justifyContent: 'center'
-          }}
-        >
-          {children}
+        <div ref={contentRef} className="w-full text-center px-10 md:px-20 relative">
+          <Markdown
+            components={{
+              p: ({ children }) => <p className="mb-12 text-2xl md:text-4xl leading-relaxed"><CharReveal progress={progress} context={context}>{children}</CharReveal></p>,
+              h2: ({ children }) => <h2 className="font-serif text-5xl md:text-8xl mb-16 text-center"><CharReveal progress={progress} context={context}>{children}</CharReveal></h2>,
+              em: ({ children }) => <em className="italic">{children}</em>,
+              strong: ({ children }) => <strong className="font-bold">{children}</strong>,
+            }}
+          >
+            {children}
+          </Markdown>
         </div>
       </motion.div>
-      
-      {pages > 1 && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-3 z-10">
-          {Array.from({ length: pages }).map((_, i) => (
-            <motion.div
-              key={i}
-              initial={false}
-              animate={{ 
-                width: i === currentPage ? 24 : 8,
-                opacity: i === currentPage ? 1 : 0.3,
-                backgroundColor: i === currentPage ? 'var(--color-monastery-accent)' : '#fff'
-              }}
-              className="h-1 rounded-full cursor-pointer"
-              onClick={() => setCurrentPage(i)}
-            />
-          ))}
-        </div>
-      )}
     </div>
   );
 };
