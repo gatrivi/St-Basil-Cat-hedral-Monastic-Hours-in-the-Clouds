@@ -13,6 +13,8 @@ export const AutoPager: React.FC<AutoPagerProps> = ({ children, isActive = true 
   const [currentPage, setCurrentPage] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
 
+  const [progress, setProgress] = useState(0);
+
   const calculatePages = () => {
     if (containerRef.current && contentRef.current) {
       const containerH = containerRef.current.clientHeight;
@@ -21,8 +23,6 @@ export const AutoPager: React.FC<AutoPagerProps> = ({ children, isActive = true 
       setContainerHeight(containerH);
 
       if (contentH > containerH && containerH > 0) {
-        // We add a bit of padding to avoid cutting the last line too close
-        // and to give some breathing room
         const numPages = Math.ceil(contentH / containerH);
         setPages(numPages);
       } else {
@@ -49,29 +49,46 @@ export const AutoPager: React.FC<AutoPagerProps> = ({ children, isActive = true 
   useEffect(() => {
     if (!isActive || pages <= 1) {
       setCurrentPage(0);
+      setProgress(0);
       return;
     }
 
-    // Slow contemplative reading speed: 
-    // Roughly 120 words per minute (2 words per second)
     const text = contentRef.current?.innerText || '';
     const wordCount = text.trim().split(/\s+/).length;
     const estimatedTotalSeconds = (wordCount / 120) * 60;
-    
-    // We want at least 10 seconds per page, and we divide total time by pages
     const timePerPage = Math.max(10000, (estimatedTotalSeconds * 1000) / pages);
 
-    const interval = setInterval(() => {
-      setCurrentPage((prev) => (prev + 1) % pages);
-    }, timePerPage);
+    let start: number | null = null;
+    let animationFrame: number;
 
-    return () => clearInterval(interval);
+    const animate = (timestamp: number) => {
+      if (!start) start = timestamp;
+      const elapsed = timestamp - start;
+      const newProgress = Math.min(1, elapsed / timePerPage);
+      
+      setProgress(newProgress);
+
+      if (elapsed < timePerPage) {
+        animationFrame = requestAnimationFrame(animate);
+      } else {
+        setCurrentPage((prev) => (prev + 1) % pages);
+        start = null; // Reset for next page
+        animationFrame = requestAnimationFrame(animate);
+      }
+    };
+
+    animationFrame = requestAnimationFrame(animate);
+
+    return () => cancelAnimationFrame(animationFrame);
   }, [isActive, pages, children]);
 
   return (
-    <div ref={containerRef} className="relative overflow-hidden w-full h-full">
+    <div 
+      ref={containerRef} 
+      className="relative overflow-hidden w-full h-full"
+      style={{ '--reading-progress': `${progress * 100}%` } as React.CSSProperties}
+    >
       <motion.div
-        ref={contentRef}
         animate={{ y: -currentPage * containerHeight }}
         transition={{ 
           duration: 1.5, 
@@ -80,9 +97,25 @@ export const AutoPager: React.FC<AutoPagerProps> = ({ children, isActive = true 
           stiffness: 50,
           damping: 15
         }}
-        className={`w-full ${pages === 1 ? 'min-h-full flex flex-col justify-center' : ''}`}
+        className={`w-full ${pages === 1 ? 'min-h-full flex flex-col justify-center' : ''} relative`}
       >
-        {children}
+        {/* Base Layer (White/Muted text) */}
+        <div ref={contentRef} className="w-full opacity-40">
+          {children}
+        </div>
+
+        {/* Highlight Layer (Gold text) */}
+        <div 
+          className="absolute inset-0 w-full select-none pointer-events-none text-[var(--color-monastery-accent)]"
+          style={{ 
+            clipPath: `inset(0 0 ${100 - (progress * 100)}% 0)`,
+            display: pages === 1 ? 'flex' : 'block',
+            flexDirection: 'column',
+            justifyContent: 'center'
+          }}
+        >
+          {children}
+        </div>
       </motion.div>
       
       {pages > 1 && (
