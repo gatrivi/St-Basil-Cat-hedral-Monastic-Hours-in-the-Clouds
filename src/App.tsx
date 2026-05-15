@@ -16,10 +16,19 @@ import { getPrayerRecordingMetadata } from './services/recordings';
 
 // Declare the version injected by Vite
 declare const __APP_VERSION__: string;
-const VERSION = '1.2.6';
+const VERSION = '1.2.7';
 
 // A simple bell sound (public domain/CC0)
 const BELL_SOUND_URL = 'https://upload.wikimedia.org/wikipedia/commons/b/b4/Bell-sound.ogg';
+
+// ─── Hard Reset for Smart TVs ───
+const rechargeChapel = () => {
+  try {
+    localStorage.clear();
+    sessionStorage.clear();
+  } catch (e) { /* ignore */ }
+  window.location.reload();
+};
 
 // ─── Glacier Scroll Hook ───
 function useGlacierScroll(ref: React.RefObject<HTMLDivElement | null>, active: boolean, speed = 0.05) {
@@ -564,12 +573,18 @@ export default function App() {
           {/* Extra padding for glacier scroll */}
           <div className="h-64" />
         </div>
-        <div className="p-4 border-t border-white/5 text-center opacity-40 hover:opacity-100 transition-opacity duration-500">
+        <div className="p-4 border-t border-white/5 flex flex-col items-center gap-2 opacity-40 hover:opacity-100 transition-opacity duration-500">
           <p className="text-[10px] uppercase tracking-widest flex items-center justify-center gap-2">
             <a href="https://gatrivi.com" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-monastery-accent)] transition-colors">Gatrivi</a>
             <span className="opacity-50">|</span>
             <span className="opacity-50">v{VERSION}</span>
           </p>
+          <button 
+            onClick={rechargeChapel}
+            className="text-[9px] uppercase tracking-[0.2em] border border-white/10 px-2 py-1 rounded hover:bg-white/5 hover:border-white/30 transition-all cursor-pointer"
+          >
+            Recargar Capilla
+          </button>
         </div>
       </aside>
 
