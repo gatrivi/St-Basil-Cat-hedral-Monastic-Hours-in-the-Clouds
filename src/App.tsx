@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Bell, Play, Pause, Volume2, VolumeX, Clock, AlertCircle, Copy, Check, Menu, X, Mic, Waves } from 'lucide-react';
-import { format } from 'date-fns';
+import { Bell, Play, Pause, Volume2, VolumeX, Clock, AlertCircle, Copy, Check, Menu, X, Mic, Waves, Sun, Moon, Sunrise, Sunset } from 'lucide-react';
+import { format, isAfter, parse } from 'date-fns';
 import { es } from 'date-fns/locale';
 import Markdown from 'react-markdown';
 import { getCurrentAndNextHour, HOURS_SCHEDULE, LiturgicalHour } from './lib/hours';
@@ -16,12 +16,121 @@ import { getPrayerRecordingMetadata } from './services/recordings';
 
 // Declare the version injected by Vite
 declare const __APP_VERSION__: string;
+const VERSION = '1.3.0'; // Jumping to 1.3.0 for this major integration
 
 // A simple bell sound (public domain/CC0)
 const BELL_SOUND_URL = 'https://upload.wikimedia.org/wikipedia/commons/b/b4/Bell-sound.ogg';
 
+// ─── Hard Reset for Smart TVs ───
+const rechargeChapel = () => {
+  try {
+    localStorage.clear();
+    sessionStorage.clear();
+  } catch (e) { /* ignore */ }
+  window.location.reload();
+};
+
+// ─── Glacier Scroll Hook ───
+function useGlacierScroll(ref: React.RefObject<HTMLDivElement | null>, active: boolean, speed = 0.05) {
+  useEffect(() => {
+    if (!active || !ref.current) return;
+    
+    let lastTime = performance.now();
+    let scrollPos = ref.current.scrollTop;
+    let frame: number;
+
+    const step = (time: number) => {
+      const dt = time - lastTime;
+      lastTime = time;
+      
+      if (ref.current) {
+        // Significantly slower: speed is in pixels per second
+        scrollPos += (speed * dt) / 1000;
+        ref.current.scrollTop = scrollPos;
+        
+        // If we reach the end, reset very slowly to create a loop
+        if (scrollPos >= ref.current.scrollHeight - ref.current.clientHeight) {
+          scrollPos = 0;
+        }
+      }
+      frame = requestAnimationFrame(step);
+    };
+
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [active, ref, speed]);
+}
+
+function useParallax() {
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const handleMouse = (e: MouseEvent) => {
+      const x = (e.clientX / window.innerWidth - 0.5) * 20;
+      const y = (e.clientY / window.innerHeight - 0.5) * 20;
+      setOffset({ x, y });
+    };
+    window.addEventListener('mousemove', handleMouse);
+    return () => window.removeEventListener('mousemove', handleMouse);
+  }, []);
+
+  return offset;
+}
+
+function LightShafts() {
+  return (
+    <div className="light-shafts">
+      <div className="light-shaft" />
+    </div>
+  );
+}
+
+function DustMotes() {
+  const motes = Array.from({ length: 30 }).map((_, i) => ({
+    id: i,
+    left: `${Math.random() * 100}%`,
+    top: `${Math.random() * 100}%`,
+    duration: `${15 + Math.random() * 20}s`,
+    delay: `${Math.random() * -20}s`,
+  }));
+
+  return (
+    <div className="dust-motes">
+      {motes.map(m => (
+        <div
+          key={m.id}
+          className="mote"
+          style={{
+            left: m.left,
+            top: m.top,
+            animationDuration: m.duration,
+            animationDelay: m.delay,
+          } as any}
+        />
+      ))}
+    </div>
+  );
+}
+
+function CelestialClockwork() {
+  return (
+    <div className="celestial-container">
+      <div className="celestial-gear" style={{ animationDuration: '360s', opacity: 0.5 }}>
+        <SacredDrawing symbolKey="luminoso_4" size={800} />
+      </div>
+      <div className="celestial-gear" style={{ animationDuration: '240s', animationDirection: 'reverse', opacity: 0.3 }}>
+        <SacredDrawing symbolKey="glorioso_5" size={600} />
+      </div>
+      <div className="celestial-gear" style={{ animationDuration: '600s', opacity: 0.2 }}>
+        <SacredDrawing symbolKey="luminoso_4" size={1200} />
+      </div>
+    </div>
+  );
+}
+
 function BackgroundLayers({ currentHour }: { currentHour: LiturgicalHour | null }) {
   const { currentSrc, previousSrc, isTransitioning } = useBackground(currentHour?.name ?? null);
+  const parallax = useParallax();
 
   return (
     <div className="fixed inset-0 z-0">
@@ -31,7 +140,7 @@ function BackgroundLayers({ currentHour }: { currentHour: LiturgicalHour | null 
           style={{
             backgroundImage: `url(${previousSrc})`,
             opacity: isTransitioning ? 0 : 1,
-            transform: 'scale(1.05)',
+            transform: `scale(1.1) translate(${parallax.x * 0.5}px, ${parallax.y * 0.5}px)`,
           }}
         />
       )}
@@ -40,7 +149,7 @@ function BackgroundLayers({ currentHour }: { currentHour: LiturgicalHour | null 
         style={{
           backgroundImage: `url(${currentSrc})`,
           opacity: 1,
-          transform: 'scale(1.05)',
+          transform: `scale(1.1) translate(${parallax.x * 0.5}px, ${parallax.y * 0.5}px)`,
         }}
       />
       <div
@@ -143,8 +252,14 @@ export default function App() {
   const speechProgressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const touchStartX = useRef<number | null>(null);
   const lastPlayedHourRef = useRef<string | null>(null);
+  const prayerTextRef = useRef<HTMLDivElement | null>(null);
+  const sidepaneRef = useRef<HTMLDivElement | null>(null);
 
   const [readingProgress, setReadingProgress] = useState(0);
+
+  // Glacier Scroll Activation
+  useGlacierScroll(prayerTextRef, isPlaying && !isLoadingText, 30);
+  useGlacierScroll(sidepaneRef, !sidebarOpen, 8);
 
   useEffect(() => {
     if (!isPlaying || !fragment) {
@@ -152,7 +267,6 @@ export default function App() {
       return;
     }
 
-    // Slow "viejita" reading speed: 70 words per minute
     const wordCount = fragment.text.trim().split(/\s+/).length;
     const estimatedSeconds = (wordCount / 70) * 60;
     const duration = Math.max(20000, estimatedSeconds * 1000);
@@ -180,12 +294,81 @@ export default function App() {
   const [fullPrayerText, setFullPrayerText] = useState<string>('');
 
   const handleCopy = useCallback(() => {
-    const textToCopy = fragment ? `${fragment.title}\n\n${fragment.text}` : '';
-    if (!textToCopy) return;
-    navigator.clipboard.writeText(textToCopy);
-    setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 2000);
+    if (!fragment) return;
+    navigator.clipboard.writeText(fragment.text).then(() => {
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    });
   }, [fragment]);
+
+  const playHour = useCallback(async (hour: LiturgicalHour) => {
+    if (isLoadingAudio || isLoadingText) return;
+    
+    setIsLoadingText(true);
+    setError(null);
+    setUsingFallback(false);
+    setFragment(null);
+    setAudioProgress(0);
+    
+    try {
+      const text = await generatePrayerText(hour.name);
+      setFullPrayerText(text);
+      setFragment({ title: hour.name, text });
+      setIsLoadingText(false);
+      
+      setIsLoadingAudio(true);
+      const audioUrl = await generateAudioOrFallback(hour.name, text);
+      if (audioRef.current) {
+        audioRef.current.src = audioUrl;
+        audioRef.current.play().catch(e => {
+          console.warn("Autoplay blocked", e);
+          setAutoplayBlocked(true);
+        });
+      }
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message);
+      setUsingFallback(true);
+    } finally {
+      setIsLoadingAudio(false);
+      setIsLoadingText(false);
+    }
+  }, [isLoadingAudio, isLoadingText]);
+
+  const syncAndPlay = useCallback((hour: LiturgicalHour, now: Date) => {
+    playHour(hour);
+  }, [playHour]);
+
+  const togglePlayPause = useCallback(() => {
+    if (autoplayBlocked) {
+      handleManualStart();
+      return;
+    }
+    if (audioRef.current) {
+      if (isPlaying) audioRef.current.pause();
+      else audioRef.current.play();
+    }
+  }, [isPlaying, autoplayBlocked]);
+
+  const toggleMute = useCallback(() => {
+    setIsMuted(prev => !prev);
+    if (audioRef.current) audioRef.current.muted = !isMuted;
+  }, [isMuted]);
+
+  const toggleAmbient = useCallback(() => {
+    setAmbientEnabled(prev => {
+      const next = !prev;
+      localStorage.setItem('cathedral-ambient', String(next));
+      return next;
+    });
+  }, []);
+
+  const handleManualStart = () => {
+    setAutoplayBlocked(false);
+    initResonator(true);
+    if (audioRef.current) audioRef.current.play();
+    if (bellRef.current) bellRef.current.play();
+  };
 
   const updateFragment = useCallback((hour: LiturgicalHour | null, index: number) => {
     if (!hour) return;
@@ -229,9 +412,6 @@ export default function App() {
     setNextHour(next);
     if (curr) {
       updateFragment(curr, 0);
-      loadHourText(curr).then((text) => {
-        if (text) syncAndPlay(curr, now);
-      });
     }
     initResonator(true);
   }, []);
@@ -243,14 +423,12 @@ export default function App() {
     return () => events.forEach(e => window.removeEventListener(e, markActive));
   }, []);
 
-  // Unified resonator state: active when playing or ambient is on, unless muted
   useEffect(() => {
     const shouldBeActive = (isPlaying || ambientEnabled) && !isMuted;
     if (shouldBeActive) startResonator();
     else stopResonator();
   }, [isPlaying, ambientEnabled, isMuted, startResonator, stopResonator]);
 
-  // Check if a user recording exists for the current hour
   useEffect(() => {
     if (!currentHour) {
       setHasRecording(false);
@@ -288,174 +466,44 @@ export default function App() {
       const idleMs = Date.now() - lastInteractionRef.current;
       const sinceRotationMs = Date.now() - lastAutoRotationRef.current;
       if (curr && idleMs > 3 * 60 * 1000 && sinceRotationMs > 10 * 60 * 1000) {
-        const fragments = FRAGMENTS_BY_HOUR[curr.name];
-        if (fragments && fragments.length > 1) {
-          setFragmentIndex(prev => {
-            const nextIdx = (prev + 1) % fragments.length;
-            updateFragment(curr, nextIdx);
-            return nextIdx;
-          });
-          lastAutoRotationRef.current = Date.now();
-        }
+        goToNextFragment();
+        lastAutoRotationRef.current = Date.now();
       }
-    }, 30000);
+    }, 1000);
     return () => clearInterval(timer);
-  }, [currentHour, isPlaying, isLoadingAudio, isLoadingText, updateFragment]);
-
-  const syncAndPlay = async (hour: LiturgicalHour, now: Date) => {
-    const currentMinutes = now.getMinutes();
-    const currentSeconds = now.getSeconds();
-    const offsetSeconds = (currentMinutes * 60) + currentSeconds;
-    await playHour(hour, false, offsetSeconds);
-  };
-
-  const cleanupSpeech = useCallback(() => {
-    if (speechProgressTimer.current) {
-      clearInterval(speechProgressTimer.current);
-      speechProgressTimer.current = null;
-    }
-    if (speechRef.current) {
-      speechRef.current.stop();
-      speechRef.current = null;
-    }
-  }, []);
-
-  const loadHourText = async (hour: LiturgicalHour) => {
-    if (isLoadingText) return;
-    setIsLoadingText(true);
-    setError(null);
-    setUsingFallback(false);
-    try {
-      const text = await generatePrayerText(hour.name, new Date());
-      setFullPrayerText(text);
-      return text;
-    } catch (err) {
-      setUsingFallback(true);
-      setError('Los monjes estan en contemplacion silenciosa. Mostrando la ultima oracion disponible.');
-      return '';
-    } finally {
-      setIsLoadingText(false);
-    }
-  };
-
-  const playHour = async (hour: LiturgicalHour, _fadeIn: boolean = false, startOffset: number = 0) => {
-    if (isPlaying || isLoadingAudio) return;
-    let text = fullPrayerText || (fragment ? `${fragment.title}. ${fragment.text}` : '');
-    if (!text || (currentHour && hour.name !== currentHour.name)) {
-      text = await loadHourText(hour) || '';
-      if (!text) return;
-    }
-    setIsLoadingAudio(true);
-    cleanupSpeech();
-    try {
-      const result = await generateAudioOrFallback(text, { hour: hour.name, index: fragmentIndex });
-      if (result.mode === 'piper' || result.mode === 'manual') {
-        const audioUrl = result.mode === 'piper' ? `data:audio/wav;base64,${result.base64}` : result.url!;
-        if (audioRef.current) {
-          audioRef.current.src = audioUrl;
-          audioRef.current.muted = isMuted;
-          audioRef.current.onloadedmetadata = () => {
-            if (!audioRef.current) return;
-            const duration = audioRef.current.duration;
-            if (startOffset > 0 && startOffset < duration) {
-              audioRef.current.currentTime = startOffset;
-            } else if (startOffset >= duration) {
-              setIsLoadingAudio(false);
-              return;
-            }
-            audioRef.current.play().then(() => {
-              setIsPlaying(true);
-              setIsLoadingAudio(false);
-              setAutoplayBlocked(false);
-            }).catch(() => {
-              setIsLoadingAudio(false);
-              setAutoplayBlocked(true);
-            });
-          };
-        }
-      } else if (result.mode === 'speech') {
-        const ctrl = result.controller;
-        speechRef.current = ctrl;
-        ctrl.onPlay = () => { setIsPlaying(true); setIsLoadingAudio(false); setAutoplayBlocked(false); };
-        ctrl.onPause = () => { setIsPlaying(false); };
-        ctrl.onEnd = () => { setIsPlaying(false); if (speechProgressTimer.current) { clearInterval(speechProgressTimer.current); speechProgressTimer.current = null; } };
-        ctrl.onTimeUpdate = () => { setAudioProgress(ctrl.getCurrentTime()); setAudioDuration(ctrl.getDuration()); };
-        speechProgressTimer.current = setInterval(() => { ctrl.onTimeUpdate?.(); }, 250);
-        ctrl.play();
-      }
-    } catch (err) {
-      setIsLoadingAudio(false);
-    }
-  };
-
-  const handleManualStart = () => {
-    setAutoplayBlocked(false);
-    playResonatorBell();
-    if (currentHour) syncAndPlay(currentHour, new Date());
-  };
-
-  const toggleAmbient = useCallback(() => {
-    setAmbientEnabled(prev => {
-      const next = !prev;
-      try { localStorage.setItem('cathedral-ambient', String(next)); } catch {}
-      return next;
-    });
-  }, []);
-
-  const togglePlayPause = useCallback(() => {
-    if (autoplayBlocked) { handleManualStart(); return; }
-    if (speechRef.current) {
-      if (isPlaying) { speechRef.current.pause(); setIsPlaying(false); }
-      else { speechRef.current.play(); setIsPlaying(true); }
-      return;
-    }
-    if (!audioRef.current) return;
-    if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); }
-    else if (audioRef.current.src) { audioRef.current.play(); setIsPlaying(true); }
-    else if (currentHour) { playHour(currentHour); }
-  }, [isPlaying, currentHour, fullPrayerText, autoplayBlocked]);
-
-  const toggleMute = useCallback(() => {
-    setIsMuted(prev => {
-      const next = !prev;
-      if (audioRef.current) audioRef.current.muted = next;
-      if (bellRef.current) bellRef.current.muted = next;
-      if (speechRef.current) { if (next) speechRef.current.pause(); else if (isPlaying) speechRef.current.play(); }
-      return next;
-    });
-  }, [isPlaying]);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) return;
-      switch (e.key) {
-        case ' ': e.preventDefault(); togglePlayPause(); break;
-        case 'm': case 'M': toggleMute(); break;
-        case 'c': case 'C': if (!e.ctrlKey && !e.metaKey) handleCopy(); break;
-        case 'ArrowRight': e.preventDefault(); goToNextFragment(); break;
-        case 'ArrowLeft': e.preventDefault(); goToPrevFragment(); break;
-        case 'r': case 'R': if (currentHour) loadHourText(currentHour); break;
-        case 'v': case 'V': setShowRecorder(prev => !prev); break;
-        case 'a': case 'A': toggleAmbient(); break;
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, isLoadingAudio, isLoadingText, isMuted, currentHour, handleCopy, goToNextFragment, goToPrevFragment, toggleAmbient]);
-
-  useEffect(() => {
-    return () => { cleanupSpeech(); cleanupResonator(); };
-  }, [cleanupResonator, cleanupSpeech]);
+  }, [currentHour, isPlaying, isLoadingAudio, isLoadingText, playHour, playResonatorBell, goToNextFragment, updateFragment]);
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
-    return `${m}:${String(s).padStart(2, '0')}`;
+    return `${m}:${s.toString().padStart(2, '0')}`;
   };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (showRecorder) return;
+      if (e.code === 'Space') { e.preventDefault(); togglePlayPause(); }
+      if (e.key.toLowerCase() === 'm') { e.preventDefault(); toggleMute(); }
+      if (e.key.toLowerCase() === 'a') { e.preventDefault(); toggleAmbient(); }
+      if (e.key.toLowerCase() === 'v') { e.preventDefault(); setShowRecorder(prev => !prev); }
+      if (e.key.toLowerCase() === 'c') { e.preventDefault(); handleCopy(); }
+      if (e.key === 'ArrowRight') { e.preventDefault(); goToNextFragment(); }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); goToPrevFragment(); }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [togglePlayPause, toggleMute, toggleAmbient, handleCopy, goToNextFragment, goToPrevFragment, showRecorder]);
+
+  useEffect(() => {
+    return () => { cleanupResonator(); };
+  }, [cleanupResonator]);
 
   return (
     <div className="h-screen flex overflow-hidden relative cursor-default" onClick={() => { if (autoplayBlocked) handleManualStart(); }}>
       <BackgroundLayers currentHour={currentHour} />
+      <LightShafts />
+      <DustMotes />
+      <CelestialClockwork />
       <audio ref={bellRef} src={BELL_SOUND_URL} preload="auto" />
       <audio ref={audioRef} onEnded={() => { setIsPlaying(false); }} onPause={() => setIsPlaying(false)} onPlay={() => setIsPlaying(true)} onTimeUpdate={(e) => { const audio = e.currentTarget; if (audio.duration) { setAudioProgress(audio.currentTime); setAudioDuration(audio.duration); } }} onLoadedMetadata={(e) => setAudioDuration(e.currentTarget.duration || 0)} />
 
@@ -477,42 +525,62 @@ export default function App() {
           <motion.h1 key={format(currentTime, 'HH:mm')} initial={{ opacity: 0.5 }} animate={{ opacity: 1 }} transition={{ duration: 1.5 }} className="font-serif text-4xl text-[var(--color-monastery-accent)]">{format(currentTime, 'HH:mm')}</motion.h1>
           <p className="text-xs uppercase tracking-[0.3em] opacity-60 mt-1">{format(currentTime, "EEEE, d 'de' MMMM", { locale: es })}</p>
         </div>
-        <div className="p-5 border-b border-white/5">
-          <p className="text-[10px] uppercase tracking-widest opacity-50 mb-2 flex items-center gap-1.5"><Clock size={10} /> Hora Actual</p>
-          <AnimatePresence mode="wait">
-            <motion.div key={currentHour?.name || 'empty'} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1.2 }}>
-              <h2 className="font-serif text-2xl text-[var(--color-monastery-accent)]">{currentHour?.name || '...'}</h2>
-              <p className="text-xs opacity-70 mt-0.5">{currentHour?.description}</p>
-              <p className="font-mono text-xs opacity-50 mt-1">{currentHour?.timeString}</p>
-            </motion.div>
-          </AnimatePresence>
+        
+        <div 
+          ref={sidepaneRef}
+          className="flex-1 overflow-y-auto custom-scrollbar mask-fade-y flex flex-col min-h-0"
+        >
+          <div className="p-5 border-b border-white/5">
+            <p className="text-[10px] uppercase tracking-widest opacity-50 mb-2 flex items-center gap-1.5"><Clock size={10} /> Hora Actual</p>
+            <AnimatePresence mode="wait">
+              <motion.div key={currentHour?.name || 'empty'} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1.2 }}>
+                <h2 className="font-serif text-2xl text-[var(--color-monastery-accent)]">{currentHour?.name || '...'}</h2>
+                <p className="text-xs opacity-70 mt-0.5">{currentHour?.description}</p>
+                <p className="font-mono text-xs opacity-50 mt-1">{currentHour?.timeString}</p>
+              </motion.div>
+            </AnimatePresence>
+          </div>
+          <div className="p-5 border-b border-white/5 opacity-70">
+            <p className="text-[10px] uppercase tracking-widest opacity-50 mb-2">Pr├│xima Hora</p>
+            <AnimatePresence mode="wait">
+              <motion.div key={nextHour?.name || 'empty'} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1.2 }}>
+                <h2 className="font-serif text-xl">{nextHour?.name || '...'}</h2>
+                <p className="font-mono text-xs opacity-50 mt-1">{nextHour?.timeString}</p>
+              </motion.div>
+            </AnimatePresence>
+          </div>
+
+          <div className="flex-1 flex flex-col min-h-[400px]">
+            <p className="text-[10px] uppercase tracking-widest opacity-50 px-5 mt-5">Ritmo Diario</p>
+            <Chronogram currentTime={currentTime} currentHour={currentHour} />
+          </div>
+          
+          <div className="h-32" />
         </div>
-        <div className="p-5 border-b border-white/5 opacity-70">
-          <p className="text-[10px] uppercase tracking-widest opacity-50 mb-2">Pr├│xima Hora</p>
-          <AnimatePresence mode="wait">
-            <motion.div key={nextHour?.name || 'empty'} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1.2 }}>
-              <h2 className="font-serif text-xl">{nextHour?.name || '...'}</h2>
-              <p className="font-mono text-xs opacity-50 mt-1">{nextHour?.timeString}</p>
-            </motion.div>
-          </AnimatePresence>
-        </div>
-        <div className="flex-1 flex flex-col min-h-0">
-          <p className="text-[10px] uppercase tracking-widest opacity-50 px-5 mt-5">Ritmo Diario</p>
-          <Chronogram currentTime={currentTime} currentHour={currentHour} />
-        </div>
-        <div className="p-4 border-t border-white/5 text-center opacity-40 hover:opacity-100 transition-opacity duration-500">
+
+        <div className="p-4 border-t border-white/5 flex flex-col items-center gap-2 opacity-40 hover:opacity-100 transition-opacity duration-500">
           <p className="text-[10px] uppercase tracking-widest flex items-center justify-center gap-2">
             <a href="https://gatrivi.com" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-monastery-accent)] transition-colors">Gatrivi</a>
             <span className="opacity-50">|</span>
-            <span className="opacity-50">v{__APP_VERSION__}</span>
+            <span className="opacity-50">v{VERSION}</span>
           </p>
+          <button 
+            onClick={rechargeChapel}
+            className="text-[9px] uppercase tracking-[0.2em] border border-white/10 px-2 py-1 rounded hover:bg-white/5 hover:border-white/30 transition-all cursor-pointer"
+          >
+            Recargar Capilla
+          </button>
         </div>
       </aside>
 
       {sidebarOpen && <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />}
 
       <main className="flex-1 flex flex-col relative min-w-0 pt-14 md:pt-0" onTouchStart={(e) => { touchStartX.current = e.changedTouches[0].screenX; }} onTouchEnd={(e) => { if (touchStartX.current == null) return; const diff = touchStartX.current - e.changedTouches[0].screenX; if (Math.abs(diff) > 50) { if (diff > 0) goToNextFragment(); else goToPrevFragment(); } touchStartX.current = null; }}>
-        <div className="flex-1 overflow-hidden flex flex-col items-center justify-center p-6 md:p-12 lg:p-20 relative">
+        <div 
+          ref={prayerTextRef}
+          className="flex-1 overflow-y-auto custom-scrollbar mask-fade-y flex flex-col items-center justify-center p-6 md:p-12 lg:p-20 relative"
+        >
+          <div className="sacred-frame" />
           
           {/* Recorder Overlay */}
           <AnimatePresence>
@@ -537,6 +605,10 @@ export default function App() {
           </AnimatePresence>
 
           <div className="w-full max-w-3xl h-full relative group">
+            <div className="absolute top-8 right-8 opacity-20 pointer-events-none rose-container">
+              <SacredDrawing symbolKey="cross" progress={isPlaying ? 0.8 : 0.3} size={80} />
+            </div>
+
             {fragment && (
               <button onClick={(e) => { e.stopPropagation(); handleCopy(); }} className="absolute -top-2 right-0 opacity-0 group-hover:opacity-40 hover:!opacity-100 transition-all p-2 z-10" title="Copiar Liturgia (C)">
                 {isCopied ? <Check size={14} /> : <Copy size={14} />}
@@ -605,6 +677,7 @@ export default function App() {
               )}
             </AnimatePresence>
           </div>
+          <div className="h-96" />
         </div>
 
         <div className={`h-12 glass-panel border-t border-[var(--color-monastery-accent)]/10 flex items-center px-4 md:px-6 gap-3 md:gap-4 opacity-85 md:opacity-40 md:hover:opacity-90 transition-opacity duration-500 ${autoplayBlocked ? 'opacity-70' : ''}`} onClick={(e) => e.stopPropagation()}>
@@ -615,13 +688,11 @@ export default function App() {
             {isMuted ? <VolumeX size={16} className="md:size-3.5" /> : <Volume2 size={16} className="md:size-3.5" />}
           </button>
           
-          {/* Ambient Toggle */}
           <button onClick={toggleAmbient} className={`flex items-center gap-1 p-1.5 rounded-full hover:bg-white/10 hover:text-[var(--color-monastery-accent)] transition-all shrink-0 ${ambientEnabled ? 'text-[var(--color-monastery-accent)] opacity-100' : 'opacity-70 hover:opacity-100'}`} title="Sonido Ambiente (A)">
             <Waves size={16} />
             <span className="text-[10px] uppercase tracking-wider">Ambiente</span>
           </button>
 
-          {/* Recorder Toggle */}
           <button onClick={() => setShowRecorder(!showRecorder)} className={`flex items-center gap-1 p-1.5 rounded-full hover:bg-white/10 hover:text-[var(--color-monastery-accent)] transition-all shrink-0 ${showRecorder ? 'text-[var(--color-monastery-accent)] opacity-100' : 'opacity-70 hover:opacity-100'} ${hasRecording ? 'relative' : ''}`} title="Grabar Voz (V)">
             <Mic size={16} />
             <span className="text-[10px] uppercase tracking-wider">Voz</span>
@@ -630,14 +701,21 @@ export default function App() {
             )}
           </button>
 
-          <div className="hidden md:block opacity-30 hover:opacity-70 transition-opacity shrink-0">
-            <SacredDrawing symbolKey="cross" progress={isPlaying ? 0.8 : 0.3} size={20} />
-          </div>
-
           <div className="flex-1 flex items-center gap-3 min-w-0">
             <span className="text-[10px] font-mono opacity-50 w-8 text-right shrink-0 hidden sm:inline">{formatTime(audioProgress)}</span>
-            <div className="flex-1 h-[2px] bg-white/10 rounded-full overflow-hidden">
-              <motion.div className="h-full bg-[var(--color-monastery-accent)]" style={{ width: `${audioDuration > 0 ? (audioProgress / audioDuration) * 100 : 0}%` }} />
+            <div className="flex-1 scrubber-bar cursor-pointer" onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const pct = (e.clientX - rect.left) / rect.width;
+              if (audioRef.current && audioDuration > 0) {
+                audioRef.current.currentTime = pct * audioDuration;
+              }
+            }}>
+              <motion.div 
+                className="scrubber-progress"
+                style={{ width: `${audioDuration > 0 ? (audioProgress / audioDuration) * 100 : 0}%` }}
+              >
+                <div className="scrubber-glow" />
+              </motion.div>
             </div>
             <span className="text-[10px] font-mono opacity-50 w-8 shrink-0 hidden sm:inline">{formatTime(audioDuration)}</span>
           </div>
