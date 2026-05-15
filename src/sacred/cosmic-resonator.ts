@@ -121,8 +121,13 @@ interface SynthNodes {
   osc2: OscillatorNode;
   osc3: OscillatorNode;
   osc4: OscillatorNode;
+  osc5: OscillatorNode; // Added: detuned root
+  osc6: OscillatorNode; // Added: sub-octave triangle
+  noise: AudioBufferSourceNode;
+  noiseGain: GainNode;
   celestialGain: GainNode;
   lfo: OscillatorNode;
+  lfo2: OscillatorNode; // Added: fast modulation
   lfoGain: GainNode;
   filter: BiquadFilterNode;
   gainNode: GainNode;
@@ -141,6 +146,17 @@ export class CosmicResonator {
   private _raf: number | null = null;
 
   constructor() {}
+
+  private createNoiseBuffer() {
+    if (!this.ctx) return null;
+    const bufferSize = 2 * this.ctx.sampleRate;
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const output = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      output[i] = Math.random() * 2 - 1;
+    }
+    return buffer;
+  }
 
   start({ baseFreq = 164.81, soundEnabled = true }: { baseFreq?: number; soundEnabled?: boolean } = {}) {
     this.baseFreq = baseFreq;
@@ -161,20 +177,31 @@ export class CosmicResonator {
     osc.type = 'sine';
     osc.frequency.setValueAtTime(baseFreq, ctx.currentTime);
 
-    // Osc2: Triangle (Perfect 5th — reed texture)
+    // Osc2: Triangle (Perfect 5th ΓÇö reed texture)
     const osc2 = ctx.createOscillator();
     osc2.type = 'triangle';
     osc2.frequency.setValueAtTime(baseFreq * 1.5, ctx.currentTime);
 
-    // Osc3: Sine (Octave below — depth)
+    // Osc3: Sine (Octave below ΓÇö depth)
     const osc3 = ctx.createOscillator();
     osc3.type = 'sine';
     osc3.frequency.setValueAtTime(baseFreq * 0.5, ctx.currentTime);
 
-    // Osc4: Sine (2 Octaves up — Celestial shimmer)
+    // Osc4: Sine (2 Octaves up ΓÇö Celestial shimmer)
     const osc4 = ctx.createOscillator();
     osc4.type = 'sine';
     osc4.frequency.setValueAtTime(baseFreq * 4, ctx.currentTime);
+
+    // Osc5: Detuned Root (Richness)
+    const osc5 = ctx.createOscillator();
+    osc5.type = 'sine';
+    osc5.frequency.setValueAtTime(baseFreq * 1.002, ctx.currentTime);
+
+    // Osc6: Sub-octave Triangle (Grit)
+    const osc6 = ctx.createOscillator();
+    osc6.type = 'triangle';
+    osc6.frequency.setValueAtTime(baseFreq * 0.25, ctx.currentTime);
+
     const celestialGain = ctx.createGain();
     celestialGain.gain.value = 0;
 
@@ -186,6 +213,20 @@ export class CosmicResonator {
     filter.frequency.value = 600;
     filter.Q.value = 1;
 
+    // Noise (Wind/Atmosphere)
+    const noise = ctx.createBufferSource();
+    noise.buffer = this.createNoiseBuffer();
+    noise.loop = true;
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.value = 0.002;
+    const noiseFilter = ctx.createBiquadFilter();
+    noiseFilter.type = 'lowpass';
+    noiseFilter.frequency.value = 400;
+    noise.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(filter);
+    noise.start();
+
     // LFO "breath" (devtrivi modulation target)
     const lfo = ctx.createOscillator();
     const lfoGain = ctx.createGain();
@@ -196,10 +237,22 @@ export class CosmicResonator {
     lfoGain.connect(filter.frequency);
     lfo.start();
 
+    // LFO2 "tremolo" (fast modulation)
+    const lfo2 = ctx.createOscillator();
+    lfo2.type = 'sine';
+    lfo2.frequency.value = 4.0;
+    const lfo2Gain = ctx.createGain();
+    lfo2Gain.gain.value = 0.05;
+    lfo2.connect(lfo2Gain);
+    lfo2Gain.connect(gainNode.gain);
+    lfo2.start();
+
     osc.connect(filter);
     osc2.connect(filter);
     osc3.connect(padGain);
     osc4.connect(celestialGain);
+    osc5.connect(filter);
+    osc6.connect(padGain);
     celestialGain.connect(filter);
     padGain.connect(filter);
     filter.connect(gainNode);
@@ -208,8 +261,10 @@ export class CosmicResonator {
     osc2.start();
     osc3.start();
     osc4.start();
+    osc5.start();
+    osc6.start();
 
-    this.synth = { osc, osc2, osc3, osc4, celestialGain, lfo, lfoGain, filter, gainNode, padGain };
+    this.synth = { osc, osc2, osc3, osc4, osc5, osc6, noise, noiseGain, celestialGain, lfo, lfo2, lfoGain, filter, gainNode, padGain };
 
     // Start the cosmic modulation loop
     this._tick();
@@ -218,9 +273,9 @@ export class CosmicResonator {
   stop() {
     if (this._raf) cancelAnimationFrame(this._raf);
     if (this.synth) {
-      const { osc, osc2, osc3, osc4, lfo, gainNode } = this.synth;
+      const { osc, osc2, osc3, osc4, osc5, osc6, noise, lfo, lfo2, gainNode } = this.synth;
       try {
-        osc.stop(); osc2.stop(); osc3.stop(); osc4.stop(); lfo.stop();
+        osc.stop(); osc2.stop(); osc3.stop(); osc4.stop(); osc5.stop(); osc6.stop(); noise.stop(); lfo.stop(); lfo2.stop();
         gainNode.gain.setTargetAtTime(0, this.ctx.currentTime, 0.1);
       } catch (e) { /* ignore */ }
     }
@@ -257,9 +312,11 @@ export class CosmicResonator {
     this.synth.osc2.frequency.setTargetAtTime(freq * 1.5, t, 0.1);
     this.synth.osc3.frequency.setTargetAtTime(freq * 0.5, t, 0.1);
     this.synth.osc4.frequency.setTargetAtTime(freq * 4, t, 0.1);
+    this.synth.osc5.frequency.setTargetAtTime(freq * 1.002, t, 0.1);
+    this.synth.osc6.frequency.setTargetAtTime(freq * 0.25, t, 0.1);
   }
 
-  // ─── One-shot chimes ───
+  // ΓööΓööΓöö One-shot chimes ΓööΓööΓöö
   playActivationChime(baseFreq?: number) {
     if (!this.soundEnabled || !this.ctx) return;
     const ctx = this.ctx;
@@ -320,11 +377,11 @@ export class CosmicResonator {
     });
   }
 
-  // ─── Internal cosmic modulation loop (devtrivi) ───
+  // ΓööΓööΓöö Internal cosmic modulation loop (devtrivi) ΓööΓööΓöö
   private _tick() {
     if (!this.synth || !this.soundEnabled) return;
 
-    const { filter, gainNode, padGain, celestialGain, lfoGain, lfo } = this.synth;
+    const { filter, gainNode, padGain, celestialGain, lfoGain, lfo, lfo2, noiseGain } = this.synth;
     const t = this.ctx.currentTime;
 
     // --- Cosmic Modulation (The Great Journey) ---
@@ -336,6 +393,9 @@ export class CosmicResonator {
     // Mercury (7d) affects LFO speed (The Breath)
     const lfoSpeed = 0.15 + ((cosmic.mercury as number) * 0.1);
     if (lfo) lfo.frequency.setTargetAtTime(lfoSpeed, t, 1.0);
+
+    // Faster modulation for tremolo/vibrato
+    if (lfo2) lfo2.frequency.setTargetAtTime(3.0 + Math.sin(t * 0.1) * 1.0, t, 1.0);
 
     // Jupiter modulates Seasonal Cutoff
     const jupiterMod = (cosmic.jupiter as number) * 150;
@@ -351,9 +411,12 @@ export class CosmicResonator {
     // LFO Shimmer grows as prayer deepens
     lfoGain.gain.setTargetAtTime(this.sessionProgress * 50 + ((cosmic.mercury as number) * 20), t, 1.0);
 
+    // Noise volume fluctuation
+    noiseGain.gain.setTargetAtTime(0.001 + Math.sin(t * 0.2) * 0.0005, t, 1.0);
+
     // Volume: constant low gain
     const baseVolume = 0.012 + (this.totalEnrichment * 0.005);
-    gainNode.gain.setTargetAtTime(baseVolume + this.warmth * 0.004, t, 0.5);
+    gainNode.gain.setTargetAtTime(baseVolume + this.warmth * 0.004 + Math.sin(t * 0.05) * 0.001, t, 0.5);
 
     // Pad stability
     padGain.gain.setTargetAtTime(0.01 + this.totalEnrichment * 0.01, t, 0.5);
@@ -361,6 +424,7 @@ export class CosmicResonator {
     this._raf = requestAnimationFrame(() => this._tick());
   }
 }
+
 
 // Convenience default export
 export default CosmicResonator;

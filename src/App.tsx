@@ -54,6 +54,66 @@ function BackgroundLayers({ currentHour }: { currentHour: LiturgicalHour | null 
   );
 }
 
+function Chronogram({ currentTime, currentHour }: { currentTime: Date, currentHour: LiturgicalHour | null }) {
+  const radius = 2200; // Giant wheel radius
+  const totalMinutes = currentTime.getHours() * 60 + currentTime.getMinutes() + currentTime.getSeconds() / 60;
+  const dayProgress = totalMinutes / (24 * 60);
+  
+  // Each hour is 15 degrees (360/24)
+  // We want the current time to be at the center of the sidebar height
+  // The wheel rotates so that current angle is 0 (horizontal)
+  const currentAngle = dayProgress * 360;
+
+  return (
+    <div className="flex-1 relative overflow-hidden mt-4 mb-4">
+      <div 
+        className="absolute left-0 top-1/2 w-full transition-transform duration-1000 ease-in-out"
+        style={{ 
+          transform: `rotate(${-currentAngle}deg)`, 
+          transformOrigin: `${radius}px 0px`,
+          height: '0px'
+        }}
+      >
+        {Array.from({ length: 24 }).map((_, h) => {
+          const angle = (h / 24) * 360;
+          const isLiturgical = HOURS_SCHEDULE.find(sh => parseInt(sh.timeString.split(':')[0]) === h);
+          const isCurrent = currentHour && parseInt(currentHour.timeString.split(':')[0]) === h;
+          
+          return (
+            <div 
+              key={h}
+              className="absolute whitespace-nowrap"
+              style={{
+                transform: `rotate(${-angle}deg) translateX(-${radius - 40}px) rotate(${angle}deg)`,
+                transformOrigin: '0 0',
+                left: '0',
+                top: '0',
+                opacity: Math.abs(((angle - currentAngle + 360) % 360) - 180) > 160 ? 1 : 0.15,
+                transition: 'opacity 0.5s'
+              }}
+            >
+              <div className={`flex items-center gap-4 px-6 py-2 transition-all ${isCurrent ? 'scale-110' : 'scale-100'}`}>
+                <div className={`w-8 h-[1px] ${isLiturgical ? 'bg-[var(--color-monastery-accent)]' : 'bg-white/20'}`} />
+                <span className={`font-mono text-[10px] ${isLiturgical ? 'text-[var(--color-monastery-accent)] font-bold' : 'opacity-50'}`}>
+                  {h.toString().padStart(2, '0')}:00
+                </span>
+                {isLiturgical && (
+                  <span className={`font-serif text-sm transition-colors ${isCurrent ? 'text-[var(--color-monastery-accent)]' : 'opacity-80'}`}>
+                    {isLiturgical.name}
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      
+      {/* Center indicator line */}
+      <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-[1px] bg-[var(--color-monastery-accent)]/20 pointer-events-none" />
+    </div>
+  );
+}
+
 export default function App() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [currentHour, setCurrentHour] = useState<LiturgicalHour | null>(null);
@@ -412,7 +472,6 @@ export default function App() {
 
       <aside 
         className={`fixed md:static inset-y-0 left-0 z-40 w-72 glass-panel border-r border-[var(--color-monastery-accent)]/10 flex flex-col transition-transform duration-500 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} pt-14 md:pt-0 giant-wheel-sidebar`}
-        style={{ transform: `rotate(${readingProgress * -5}deg)` }}
       >
         <div className="hidden md:block p-6 text-center border-b border-white/5">
           <motion.h1 key={format(currentTime, 'HH:mm')} initial={{ opacity: 0.5 }} animate={{ opacity: 1 }} transition={{ duration: 1.5 }} className="font-serif text-4xl text-[var(--color-monastery-accent)]">{format(currentTime, 'HH:mm')}</motion.h1>
@@ -437,16 +496,9 @@ export default function App() {
             </motion.div>
           </AnimatePresence>
         </div>
-        <div className="flex-1 overflow-y-auto p-5">
-          <p className="text-[10px] uppercase tracking-widest opacity-50 mb-3">Ritmo Diario</p>
-          <div className="space-y-1">
-            {HOURS_SCHEDULE.map((h) => (
-              <div key={h.name} className={`flex justify-between items-center px-3 py-2 rounded text-sm transition-colors ${currentHour?.name === h.name ? 'bg-[var(--color-monastery-accent)] text-black' : 'hover:bg-white/5 opacity-70'}`}>
-                <span className="font-serif">{h.name}</span>
-                <span className="font-mono text-xs opacity-70">{h.timeString}</span>
-              </div>
-            ))}
-          </div>
+        <div className="flex-1 flex flex-col min-h-0">
+          <p className="text-[10px] uppercase tracking-widest opacity-50 px-5 mt-5">Ritmo Diario</p>
+          <Chronogram currentTime={currentTime} currentHour={currentHour} />
         </div>
         <div className="p-4 border-t border-white/5 text-center opacity-40 hover:opacity-100 transition-opacity duration-500">
           <p className="text-[10px] uppercase tracking-widest flex items-center justify-center gap-2">

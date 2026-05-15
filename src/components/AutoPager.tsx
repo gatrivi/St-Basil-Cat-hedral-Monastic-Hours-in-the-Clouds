@@ -18,8 +18,9 @@ const wrapCharacters = (children: React.ReactNode): React.ReactNode => {
       ));
     }
     if (React.isValidElement(child)) {
-      return React.cloneElement(child as React.ReactElement<any>, {
-        children: wrapCharacters(child.props.children)
+      const element = child as React.ReactElement<{ children?: React.ReactNode }>;
+      return React.cloneElement(element, {
+        children: wrapCharacters(element.props.children)
       });
     }
     return child;
@@ -32,7 +33,7 @@ export const AutoPager: React.FC<AutoPagerProps> = ({ children, progress }) => {
   const [contentHeight, setContentHeight] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
 
-  const radius = 5000;
+  const radius = 4000; // Adjusted for a slightly different curve
 
   useLayoutEffect(() => {
     const updateHeights = () => {
@@ -42,15 +43,18 @@ export const AutoPager: React.FC<AutoPagerProps> = ({ children, progress }) => {
       }
     };
 
-    updateHeights();
+    // Delay slightly to ensure fonts are loaded and layout is stable
+    const timer = setTimeout(updateHeights, 100);
 
     let observer: ResizeObserver | null = null;
     if (typeof ResizeObserver !== 'undefined') {
       observer = new ResizeObserver(updateHeights);
       if (containerRef.current) observer.observe(containerRef.current);
+      if (contentRef.current) observer.observe(contentRef.current);
     }
 
     return () => {
+      clearTimeout(timer);
       if (observer) observer.disconnect();
     };
   }, [children]);
@@ -62,43 +66,49 @@ export const AutoPager: React.FC<AutoPagerProps> = ({ children, progress }) => {
     const total = chars.length;
     if (total === 0) return;
 
-    // Direct color update bypassing React render for performance and stability
     const targetIndex = Math.floor(progress * total);
     
     for (let i = 0; i < total; i++) {
       const el = chars[i] as HTMLElement;
       if (i <= targetIndex) {
         el.style.color = 'var(--color-monastery-accent)';
+        el.style.opacity = '1';
       } else {
-        el.style.color = 'var(--color-monastery-muted)';
+        el.style.color = 'var(--color-monastery-text)';
+        el.style.opacity = '0.35';
       }
     }
   }, [progress, children]);
 
+  // Calculate rotation and translation to keep the "current line" at roughly the same vertical spot
   const rotationAngle = (contentHeight * progress) / radius * (180 / Math.PI);
-  const translateY = -progress * contentHeight * 0.7;
+  const translateY = -progress * contentHeight * 0.85;
 
   return (
-    <div ref={containerRef} className="relative overflow-hidden w-full h-full flex flex-col items-center justify-start pt-[35vh]">
+    <div ref={containerRef} className="relative overflow-hidden w-full h-full flex flex-col items-center justify-start pt-[40vh]">
+      {/* Vignette/Fade overlays */}
+      <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-[var(--color-monastery-bg)] to-transparent z-10 pointer-events-none" />
+      <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[var(--color-monastery-bg)] to-transparent z-10 pointer-events-none" />
+
       <motion.div
         animate={{ 
           rotate: -rotationAngle,
           y: translateY
         }}
-        transition={{ duration: 0.1, ease: "linear" }}
+        transition={{ duration: 0.2, ease: "linear" }}
         style={{ 
           transformOrigin: `50% ${radius}px`,
           width: '100%'
         }}
         className="relative"
       >
-        <div ref={contentRef} className="w-full text-center px-10 md:px-20 relative">
+        <div ref={contentRef} className="w-full text-center px-6 md:px-20 relative pb-[60vh]">
           <Markdown
             components={{
-              p: ({ children }) => <p className="mb-12 text-2xl md:text-4xl leading-relaxed">{wrapCharacters(children)}</p>,
-              h2: ({ children }) => <h2 className="font-serif text-5xl md:text-8xl mb-16 text-center">{wrapCharacters(children)}</h2>,
-              em: ({ children }) => <em className="italic">{children}</em>,
-              strong: ({ children }) => <strong className="font-bold">{children}</strong>,
+              p: ({ children }) => <p className="mb-10 text-2xl md:text-5xl leading-relaxed font-serif">{wrapCharacters(children)}</p>,
+              h2: ({ children }) => <h2 className="font-serif text-4xl md:text-7xl mb-12 text-center text-[var(--color-monastery-accent)]">{wrapCharacters(children)}</h2>,
+              em: ({ children }) => <em className="italic opacity-80">{children}</em>,
+              strong: ({ children }) => <strong className="font-bold text-[var(--color-monastery-accent)]">{children}</strong>,
             }}
           >
             {children}
