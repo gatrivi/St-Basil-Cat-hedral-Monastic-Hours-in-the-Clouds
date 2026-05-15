@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
-import { motion, useSpring, useTransform } from 'motion/react';
+import { motion } from 'motion/react';
 import Markdown from 'react-markdown';
 
 interface AutoPagerProps {
@@ -7,31 +7,19 @@ interface AutoPagerProps {
   progress: number;
 }
 
-// Recursive component to wrap characters and preserve progress
-const CharReveal = ({ children, progress, context }: { children: React.ReactNode, progress: number, context: { charCount: number, total: number } }) => {
+// Function to safely wrap text nodes in spans for DOM manipulation
+const wrapCharacters = (children: React.ReactNode): React.ReactNode => {
   return React.Children.map(children, child => {
     if (typeof child === 'string') {
-      const chars = child.split('');
-      const start = context.charCount;
-      context.charCount += chars.length;
-      return chars.map((char, i) => {
-        const isHighlighted = progress >= (start + i) / context.total;
-        return (
-          <span 
-            key={start + i} 
-            style={{ 
-              color: isHighlighted ? 'var(--color-monastery-accent)' : 'var(--color-monastery-muted)',
-              transition: 'color 0.2s ease-out'
-            }}
-          >
-            {char}
-          </span>
-        );
-      });
+      return child.split('').map((char, i) => (
+        <span key={i} className="liturgy-char transition-colors duration-200 ease-out text-[var(--color-monastery-muted)]">
+          {char}
+        </span>
+      ));
     }
     if (React.isValidElement(child)) {
       return React.cloneElement(child as React.ReactElement<any>, {
-        children: <CharReveal progress={progress} context={context}>{child.props.children}</CharReveal>
+        children: wrapCharacters(child.props.children)
       });
     }
     return child;
@@ -45,28 +33,50 @@ export const AutoPager: React.FC<AutoPagerProps> = ({ children, progress }) => {
   const [containerHeight, setContainerHeight] = useState(0);
 
   const radius = 5000;
-  const totalChars = children.length;
 
   useLayoutEffect(() => {
-    if (containerRef.current && contentRef.current) {
-      setContainerHeight(containerRef.current.clientHeight);
-      setContentHeight(contentRef.current.scrollHeight);
-    }
-    const observer = new ResizeObserver(() => {
+    const updateHeights = () => {
       if (containerRef.current && contentRef.current) {
         setContainerHeight(containerRef.current.clientHeight);
         setContentHeight(contentRef.current.scrollHeight);
       }
-    });
-    if (containerRef.current) observer.observe(containerRef.current);
-    return () => observer.disconnect();
+    };
+
+    updateHeights();
+
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(updateHeights);
+      if (containerRef.current) observer.observe(containerRef.current);
+    }
+
+    return () => {
+      if (observer) observer.disconnect();
+    };
   }, [children]);
 
-  const rotationAngle = (contentHeight * progress) / radius * (180 / Math.PI);
-  const translateY = -progress * contentHeight * 0.7; // Keep reading area visible
+  // High-performance DOM manipulation for character highlighting
+  useEffect(() => {
+    if (!contentRef.current) return;
+    const chars = contentRef.current.querySelectorAll('.liturgy-char');
+    const total = chars.length;
+    if (total === 0) return;
 
-  // Reset character count for each render
-  const context = { charCount: 0, total: totalChars };
+    // Direct color update bypassing React render for performance and stability
+    const targetIndex = Math.floor(progress * total);
+    
+    for (let i = 0; i < total; i++) {
+      const el = chars[i] as HTMLElement;
+      if (i <= targetIndex) {
+        el.style.color = 'var(--color-monastery-accent)';
+      } else {
+        el.style.color = 'var(--color-monastery-muted)';
+      }
+    }
+  }, [progress, children]);
+
+  const rotationAngle = (contentHeight * progress) / radius * (180 / Math.PI);
+  const translateY = -progress * contentHeight * 0.7;
 
   return (
     <div ref={containerRef} className="relative overflow-hidden w-full h-full flex flex-col items-center justify-start pt-[35vh]">
@@ -85,8 +95,8 @@ export const AutoPager: React.FC<AutoPagerProps> = ({ children, progress }) => {
         <div ref={contentRef} className="w-full text-center px-10 md:px-20 relative">
           <Markdown
             components={{
-              p: ({ children }) => <p className="mb-12 text-2xl md:text-4xl leading-relaxed"><CharReveal progress={progress} context={context}>{children}</CharReveal></p>,
-              h2: ({ children }) => <h2 className="font-serif text-5xl md:text-8xl mb-16 text-center"><CharReveal progress={progress} context={context}>{children}</CharReveal></h2>,
+              p: ({ children }) => <p className="mb-12 text-2xl md:text-4xl leading-relaxed">{wrapCharacters(children)}</p>,
+              h2: ({ children }) => <h2 className="font-serif text-5xl md:text-8xl mb-16 text-center">{wrapCharacters(children)}</h2>,
               em: ({ children }) => <em className="italic">{children}</em>,
               strong: ({ children }) => <strong className="font-bold">{children}</strong>,
             }}
