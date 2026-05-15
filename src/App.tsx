@@ -16,12 +16,106 @@ import { getPrayerRecordingMetadata } from './services/recordings';
 
 // Declare the version injected by Vite
 declare const __APP_VERSION__: string;
+const VERSION = '1.2.6';
 
 // A simple bell sound (public domain/CC0)
 const BELL_SOUND_URL = 'https://upload.wikimedia.org/wikipedia/commons/b/b4/Bell-sound.ogg';
 
+// ─── Glacier Scroll Hook ───
+function useGlacierScroll(ref: React.RefObject<HTMLDivElement | null>, active: boolean, speed = 0.05) {
+  useEffect(() => {
+    if (!active || !ref.current) return;
+    
+    let lastTime = performance.now();
+    let scrollPos = ref.current.scrollTop;
+    let frame: number;
+
+    const step = (time: number) => {
+      const dt = time - lastTime;
+      lastTime = time;
+      
+      if (ref.current) {
+        scrollPos += (speed * dt) / 1000;
+        ref.current.scrollTop = scrollPos;
+      }
+      frame = requestAnimationFrame(step);
+    };
+
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [active, ref, speed]);
+}
+
+function useParallax() {
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const handleMouse = (e: MouseEvent) => {
+      const x = (e.clientX / window.innerWidth - 0.5) * 20;
+      const y = (e.clientY / window.innerHeight - 0.5) * 20;
+      setOffset({ x, y });
+    };
+    window.addEventListener('mousemove', handleMouse);
+    return () => window.removeEventListener('mousemove', handleMouse);
+  }, []);
+
+  return offset;
+}
+
+function LightShafts() {
+  return (
+    <div className="light-shafts">
+      <div className="light-shaft" />
+    </div>
+  );
+}
+
+function DustMotes() {
+  const motes = Array.from({ length: 30 }).map((_, i) => ({
+    id: i,
+    left: `${Math.random() * 100}%`,
+    top: `${Math.random() * 100}%`,
+    duration: `${15 + Math.random() * 20}s`,
+    delay: `${Math.random() * -20}s`,
+  }));
+
+  return (
+    <div className="dust-motes">
+      {motes.map(m => (
+        <div
+          key={m.id}
+          className="mote"
+          style={{
+            left: m.left,
+            top: m.top,
+            animationDuration: m.duration,
+            animationDelay: m.delay,
+          } as any}
+        />
+      ))}
+    </div>
+  );
+}
+
+function CelestialClockwork() {
+  return (
+    <div className="celestial-container">
+      <div className="celestial-gear" style={{ animationDuration: '360s', opacity: 0.5 }}>
+        <SacredDrawing symbolKey="luminoso_4" size={800} />
+      </div>
+      <div className="celestial-gear" style={{ animationDuration: '240s', animationDirection: 'reverse', opacity: 0.3 }}>
+        <SacredDrawing symbolKey="glorioso_5" size={600} />
+      </div>
+      <div className="celestial-gear" style={{ animationDuration: '600s', opacity: 0.2 }}>
+        <SacredDrawing symbolKey="luminoso_4" size={1200} />
+      </div>
+    </div>
+  );
+}
+
 function BackgroundLayers({ currentHour }: { currentHour: LiturgicalHour | null }) {
   const { currentSrc, previousSrc, isTransitioning } = useBackground(currentHour?.name ?? null);
+  const parallax = useParallax();
 
   return (
     <div className="fixed inset-0 z-0">
@@ -31,7 +125,7 @@ function BackgroundLayers({ currentHour }: { currentHour: LiturgicalHour | null 
           style={{
             backgroundImage: `url(${previousSrc})`,
             opacity: isTransitioning ? 0 : 1,
-            transform: 'scale(1.05)',
+            transform: `scale(1.1) translate(${parallax.x * 0.5}px, ${parallax.y * 0.5}px)`,
           }}
         />
       )}
@@ -40,7 +134,7 @@ function BackgroundLayers({ currentHour }: { currentHour: LiturgicalHour | null 
         style={{
           backgroundImage: `url(${currentSrc})`,
           opacity: 1,
-          transform: 'scale(1.05)',
+          transform: `scale(1.1) translate(${parallax.x * 0.5}px, ${parallax.y * 0.5}px)`,
         }}
       />
       <div
@@ -50,6 +144,13 @@ function BackgroundLayers({ currentHour }: { currentHour: LiturgicalHour | null 
         }}
       />
       <div className="absolute inset-0 backdrop-blur-[6px]" />
+      <CelestialClockwork />
+      <div className="parallax-layer" style={{ transform: `translate(${parallax.x * 0.8}px, ${parallax.y * 0.8}px)` }}>
+        <LightShafts />
+      </div>
+      <DustMotes />
+      <div className="breathing-aura" />
+      <div className="stained-glass parallax-layer" style={{ transform: `scale(1.05) translate(${parallax.x * -0.3}px, ${parallax.y * -0.3}px)` }} />
     </div>
   );
 }
@@ -83,6 +184,14 @@ export default function App() {
   const speechProgressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const touchStartX = useRef<number | null>(null);
   const lastPlayedHourRef = useRef<string | null>(null);
+
+  // Refs for independent scrolling
+  const sidepaneRef = useRef<HTMLDivElement>(null);
+  const prayerTextRef = useRef<HTMLDivElement>(null);
+
+  // Apply glacier scroll (extremely slow)
+  useGlacierScroll(sidepaneRef, true, 1.2); // 1.2px/sec
+  useGlacierScroll(prayerTextRef, isPlaying, 0.8); // Only scroll text when playing
 
   const [readingProgress, setReadingProgress] = useState(0);
 
@@ -418,41 +527,48 @@ export default function App() {
           <motion.h1 key={format(currentTime, 'HH:mm')} initial={{ opacity: 0.5 }} animate={{ opacity: 1 }} transition={{ duration: 1.5 }} className="font-serif text-4xl text-[var(--color-monastery-accent)]">{format(currentTime, 'HH:mm')}</motion.h1>
           <p className="text-xs uppercase tracking-[0.3em] opacity-60 mt-1">{format(currentTime, "EEEE, d 'de' MMMM", { locale: es })}</p>
         </div>
-        <div className="p-5 border-b border-white/5">
-          <p className="text-[10px] uppercase tracking-widest opacity-50 mb-2 flex items-center gap-1.5"><Clock size={10} /> Hora Actual</p>
-          <AnimatePresence mode="wait">
-            <motion.div key={currentHour?.name || 'empty'} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1.2 }}>
-              <h2 className="font-serif text-2xl text-[var(--color-monastery-accent)]">{currentHour?.name || '...'}</h2>
-              <p className="text-xs opacity-70 mt-0.5">{currentHour?.description}</p>
-              <p className="font-mono text-xs opacity-50 mt-1">{currentHour?.timeString}</p>
-            </motion.div>
-          </AnimatePresence>
-        </div>
-        <div className="p-5 border-b border-white/5 opacity-70">
-          <p className="text-[10px] uppercase tracking-widest opacity-50 mb-2">Pr├│xima Hora</p>
-          <AnimatePresence mode="wait">
-            <motion.div key={nextHour?.name || 'empty'} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1.2 }}>
-              <h2 className="font-serif text-xl">{nextHour?.name || '...'}</h2>
-              <p className="font-mono text-xs opacity-50 mt-1">{nextHour?.timeString}</p>
-            </motion.div>
-          </AnimatePresence>
-        </div>
-        <div className="flex-1 overflow-y-auto p-5">
-          <p className="text-[10px] uppercase tracking-widest opacity-50 mb-3">Ritmo Diario</p>
-          <div className="space-y-1">
-            {HOURS_SCHEDULE.map((h) => (
-              <div key={h.name} className={`flex justify-between items-center px-3 py-2 rounded text-sm transition-colors ${currentHour?.name === h.name ? 'bg-[var(--color-monastery-accent)] text-black' : 'hover:bg-white/5 opacity-70'}`}>
-                <span className="font-serif">{h.name}</span>
-                <span className="font-mono text-xs opacity-70">{h.timeString}</span>
-              </div>
-            ))}
+        <div 
+          ref={sidepaneRef}
+          className="flex-1 overflow-y-auto custom-scrollbar mask-fade-y"
+        >
+          <div className="p-5 border-b border-white/5">
+            <p className="text-[10px] uppercase tracking-widest opacity-50 mb-2 flex items-center gap-1.5"><Clock size={10} /> Hora Actual</p>
+            <AnimatePresence mode="wait">
+              <motion.div key={currentHour?.name || 'empty'} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1.2 }}>
+                <h2 className="font-serif text-2xl text-[var(--color-monastery-accent)]">{currentHour?.name || '...'}</h2>
+                <p className="text-xs opacity-70 mt-0.5">{currentHour?.description}</p>
+                <p className="font-mono text-xs opacity-50 mt-1">{currentHour?.timeString}</p>
+              </motion.div>
+            </AnimatePresence>
           </div>
+          <div className="p-5 border-b border-white/5 opacity-70">
+            <p className="text-[10px] uppercase tracking-widest opacity-50 mb-2">Pr├│xima Hora</p>
+            <AnimatePresence mode="wait">
+              <motion.div key={nextHour?.name || 'empty'} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1.2 }}>
+                <h2 className="font-serif text-xl">{nextHour?.name || '...'}</h2>
+                <p className="font-mono text-xs opacity-50 mt-1">{nextHour?.timeString}</p>
+              </motion.div>
+            </AnimatePresence>
+          </div>
+          <div className="p-5">
+            <p className="text-[10px] uppercase tracking-widest opacity-50 mb-3">Ritmo Diario</p>
+            <div className="space-y-1">
+              {HOURS_SCHEDULE.map((h) => (
+                <div key={h.name} className={`flex justify-between items-center px-3 py-2 rounded text-sm transition-colors ${currentHour?.name === h.name ? 'bg-[var(--color-monastery-accent)] text-black' : 'hover:bg-white/5 opacity-70'}`}>
+                  <span className="font-serif">{h.name}</span>
+                  <span className="font-mono text-xs opacity-70">{h.timeString}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Extra padding for glacier scroll */}
+          <div className="h-64" />
         </div>
         <div className="p-4 border-t border-white/5 text-center opacity-40 hover:opacity-100 transition-opacity duration-500">
           <p className="text-[10px] uppercase tracking-widest flex items-center justify-center gap-2">
             <a href="https://gatrivi.com" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-monastery-accent)] transition-colors">Gatrivi</a>
             <span className="opacity-50">|</span>
-            <span className="opacity-50">v{__APP_VERSION__}</span>
+            <span className="opacity-50">v{VERSION}</span>
           </p>
         </div>
       </aside>
@@ -460,7 +576,11 @@ export default function App() {
       {sidebarOpen && <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />}
 
       <main className="flex-1 flex flex-col relative min-w-0 pt-14 md:pt-0" onTouchStart={(e) => { touchStartX.current = e.changedTouches[0].screenX; }} onTouchEnd={(e) => { if (touchStartX.current == null) return; const diff = touchStartX.current - e.changedTouches[0].screenX; if (Math.abs(diff) > 50) { if (diff > 0) goToNextFragment(); else goToPrevFragment(); } touchStartX.current = null; }}>
-        <div className="flex-1 overflow-hidden flex flex-col items-center justify-center p-6 md:p-12 lg:p-20 relative">
+        <div 
+          ref={prayerTextRef}
+          className="flex-1 overflow-y-auto custom-scrollbar mask-fade-y flex flex-col items-center justify-center p-6 md:p-12 lg:p-20 relative"
+        >
+          <div className="sacred-frame" />
           
           {/* Recorder Overlay */}
           <AnimatePresence>
@@ -490,6 +610,10 @@ export default function App() {
                 {isCopied ? <Check size={14} /> : <Copy size={14} />}
               </button>
             )}
+
+            <div className="absolute top-8 right-8 opacity-20 pointer-events-none rose-container">
+              <SacredDrawing symbolKey="cross" progress={isPlaying ? 0.8 : 0.3} size={80} />
+            </div>
 
             {isLoadingText && (
               <div className="flex items-center justify-center gap-3 opacity-50 mb-8">
@@ -553,6 +677,8 @@ export default function App() {
               )}
             </AnimatePresence>
           </div>
+          {/* Extra padding for glacier scroll */}
+          <div className="h-96" />
         </div>
 
         <div className={`h-12 glass-panel border-t border-[var(--color-monastery-accent)]/10 flex items-center px-4 md:px-6 gap-3 md:gap-4 opacity-85 md:opacity-40 md:hover:opacity-90 transition-opacity duration-500 ${autoplayBlocked ? 'opacity-70' : ''}`} onClick={(e) => e.stopPropagation()}>
@@ -563,13 +689,11 @@ export default function App() {
             {isMuted ? <VolumeX size={16} className="md:size-3.5" /> : <Volume2 size={16} className="md:size-3.5" />}
           </button>
           
-          {/* Ambient Toggle */}
           <button onClick={toggleAmbient} className={`flex items-center gap-1 p-1.5 rounded-full hover:bg-white/10 hover:text-[var(--color-monastery-accent)] transition-all shrink-0 ${ambientEnabled ? 'text-[var(--color-monastery-accent)] opacity-100' : 'opacity-70 hover:opacity-100'}`} title="Sonido Ambiente (A)">
             <Waves size={16} />
             <span className="text-[10px] uppercase tracking-wider">Ambiente</span>
           </button>
 
-          {/* Recorder Toggle */}
           <button onClick={() => setShowRecorder(!showRecorder)} className={`flex items-center gap-1 p-1.5 rounded-full hover:bg-white/10 hover:text-[var(--color-monastery-accent)] transition-all shrink-0 ${showRecorder ? 'text-[var(--color-monastery-accent)] opacity-100' : 'opacity-70 hover:opacity-100'} ${hasRecording ? 'relative' : ''}`} title="Grabar Voz (V)">
             <Mic size={16} />
             <span className="text-[10px] uppercase tracking-wider">Voz</span>
@@ -578,14 +702,23 @@ export default function App() {
             )}
           </button>
 
-          <div className="hidden md:block opacity-30 hover:opacity-70 transition-opacity shrink-0">
-            <SacredDrawing symbolKey="cross" progress={isPlaying ? 0.8 : 0.3} size={20} />
-          </div>
-
           <div className="flex-1 flex items-center gap-3 min-w-0">
             <span className="text-[10px] font-mono opacity-50 w-8 text-right shrink-0 hidden sm:inline">{formatTime(audioProgress)}</span>
-            <div className="flex-1 h-[2px] bg-white/10 rounded-full overflow-hidden">
-              <motion.div className="h-full bg-[var(--color-monastery-accent)]" style={{ width: `${audioDuration > 0 ? (audioProgress / audioDuration) * 100 : 0}%` }} />
+            <div className="flex-1 scrubber-bar cursor-pointer" onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const pct = (e.clientX - rect.left) / rect.width;
+              if (audioRef.current && audioDuration > 0) {
+                audioRef.current.currentTime = pct * audioDuration;
+              } else if (speechRef.current && audioDuration > 0) {
+                // Speech seeking not supported, but UI update
+              }
+            }}>
+              <motion.div 
+                className="scrubber-progress" 
+                style={{ width: `${audioDuration > 0 ? (audioProgress / audioDuration) * 100 : 0}%` }}
+              >
+                <div className="scrubber-glow" />
+              </motion.div>
             </div>
             <span className="text-[10px] font-mono opacity-50 w-8 shrink-0 hidden sm:inline">{formatTime(audioDuration)}</span>
           </div>
