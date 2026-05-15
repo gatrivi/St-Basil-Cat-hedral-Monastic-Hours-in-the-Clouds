@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Bell, Play, Pause, Volume2, VolumeX, Clock, AlertCircle, Copy, Check, Menu, X, Mic, Waves } from 'lucide-react';
-import { format } from 'date-fns';
+import { Bell, Play, Pause, Volume2, VolumeX, Clock, AlertCircle, Copy, Check, Menu, X, Mic, Waves, Sun, Moon, Sunrise, Sunset } from 'lucide-react';
+import { format, isAfter, parse } from 'date-fns';
 import { es } from 'date-fns/locale';
 import Markdown from 'react-markdown';
 import { getCurrentAndNextHour, HOURS_SCHEDULE, LiturgicalHour } from './lib/hours';
@@ -16,7 +16,7 @@ import { getPrayerRecordingMetadata } from './services/recordings';
 
 // Declare the version injected by Vite
 declare const __APP_VERSION__: string;
-const VERSION = '1.2.7';
+const VERSION = '1.2.8';
 
 // A simple bell sound (public domain/CC0)
 const BELL_SOUND_URL = 'https://upload.wikimedia.org/wikipedia/commons/b/b4/Bell-sound.ogg';
@@ -560,14 +560,40 @@ export default function App() {
             </AnimatePresence>
           </div>
           <div className="p-5">
-            <p className="text-[10px] uppercase tracking-widest opacity-50 mb-3">Ritmo Diario</p>
-            <div className="space-y-1">
-              {HOURS_SCHEDULE.map((h) => (
-                <div key={h.name} className={`flex justify-between items-center px-3 py-2 rounded text-sm transition-colors ${currentHour?.name === h.name ? 'bg-[var(--color-monastery-accent)] text-black' : 'hover:bg-white/5 opacity-70'}`}>
-                  <span className="font-serif">{h.name}</span>
-                  <span className="font-mono text-xs opacity-70">{h.timeString}</span>
-                </div>
-              ))}
+            <p className="text-[10px] uppercase tracking-widest opacity-50 mb-4 flex justify-between">
+              <span>Ritmo Diario</span>
+              <span>{format(currentTime, 'yyyy')}</span>
+            </p>
+            <div className="space-y-0">
+              {HOURS_SCHEDULE.map((h) => {
+                const isActive = currentHour?.name === h.name;
+                const hourDate = parse(h.timeString, 'HH:mm', currentTime);
+                const isPast = !isActive && isAfter(currentTime, hourDate);
+                
+                let Icon = Sun;
+                if (h.name === 'Maitines' || h.name === 'Completas') Icon = Moon;
+                if (h.name === 'Laudes') Icon = Sunrise;
+                if (h.name === 'Vísperas') Icon = Sunset;
+
+                return (
+                  <div 
+                    key={h.name} 
+                    className={`schedule-item group ${isActive ? 'active' : isPast ? 'past' : 'future'}`}
+                  >
+                    <div className="schedule-dot" />
+                    <div className={`flex justify-between items-center px-3 py-3 rounded-lg transition-all ${isActive ? 'bg-[var(--color-monastery-accent)]/10 text-[var(--color-monastery-accent)]' : 'hover:bg-white/5'}`}>
+                      <div className="flex items-center gap-3">
+                        <Icon size={14} className={isActive ? 'opacity-100' : 'opacity-40'} />
+                        <div>
+                          <p className={`font-serif text-base leading-none ${isActive ? 'font-bold' : ''}`}>{h.name}</p>
+                          <p className="text-[9px] uppercase tracking-wider opacity-50 mt-1">{h.description}</p>
+                        </div>
+                      </div>
+                      <span className="font-mono text-xs opacity-60">{h.timeString}</span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
           {/* Extra padding for glacier scroll */}
