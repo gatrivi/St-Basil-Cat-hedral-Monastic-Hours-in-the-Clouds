@@ -7,7 +7,9 @@ export function useCosmicResonator() {
   const init = useCallback((soundEnabled = true) => {
     if (!resonatorRef.current) {
       resonatorRef.current = new CosmicResonator();
-      resonatorRef.current.start({ baseFreq: 130.81, soundEnabled });
+      // Lower base freq (65.41 is C2) and subtle volume
+      resonatorRef.current.start({ baseFreq: 65.41, soundEnabled });
+      resonatorRef.current.setWarmth(0.1);
     }
   }, []);
 

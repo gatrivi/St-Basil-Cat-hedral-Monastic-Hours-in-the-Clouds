@@ -179,7 +179,7 @@ export class CosmicResonator {
     celestialGain.gain.value = 0;
 
     const padGain = ctx.createGain();
-    padGain.gain.value = 0.02;
+    padGain.gain.value = 0.005; // Lower initial pad
 
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
@@ -352,11 +352,11 @@ export class CosmicResonator {
     lfoGain.gain.setTargetAtTime(this.sessionProgress * 50 + ((cosmic.mercury as number) * 20), t, 1.0);
 
     // Volume: constant low gain
-    const baseVolume = 0.012 + (this.totalEnrichment * 0.005);
-    gainNode.gain.setTargetAtTime(baseVolume + this.warmth * 0.004, t, 0.5);
+    const baseVolume = 0.005 + (this.totalEnrichment * 0.002);
+    gainNode.gain.setTargetAtTime(baseVolume + this.warmth * 0.002, t, 0.5);
 
     // Pad stability
-    padGain.gain.setTargetAtTime(0.01 + this.totalEnrichment * 0.01, t, 0.5);
+    padGain.gain.setTargetAtTime(0.004 + this.totalEnrichment * 0.005, t, 0.5);
 
     this._raf = requestAnimationFrame(() => this._tick());
   }

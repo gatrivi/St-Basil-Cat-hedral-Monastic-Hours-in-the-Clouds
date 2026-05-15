@@ -16,7 +16,7 @@ import { getPrayerRecordingMetadata } from './services/recordings';
 
 // Declare the version injected by Vite
 declare const __APP_VERSION__: string;
-const VERSION = '1.2.8';
+const VERSION = '1.2.9';
 
 // A simple bell sound (public domain/CC0)
 const BELL_SOUND_URL = 'https://upload.wikimedia.org/wikipedia/commons/b/b4/Bell-sound.ogg';
@@ -44,8 +44,14 @@ function useGlacierScroll(ref: React.RefObject<HTMLDivElement | null>, active: b
       lastTime = time;
       
       if (ref.current) {
+        // Significantly slower: speed is in pixels per second
         scrollPos += (speed * dt) / 1000;
         ref.current.scrollTop = scrollPos;
+        
+        // If we reach the end, reset very slowly to create a loop
+        if (scrollPos >= ref.current.scrollHeight - ref.current.clientHeight) {
+          scrollPos = 0;
+        }
       }
       frame = requestAnimationFrame(step);
     };
@@ -199,8 +205,8 @@ export default function App() {
   const prayerTextRef = useRef<HTMLDivElement>(null);
 
   // Apply glacier scroll (extremely slow)
-  useGlacierScroll(sidepaneRef, true, 1.2); // 1.2px/sec
-  useGlacierScroll(prayerTextRef, isPlaying, 0.8); // Only scroll text when playing
+  useGlacierScroll(sidepaneRef, true, 0.15); // 0.15px/sec (glacier speed)
+  // useGlacierScroll(prayerTextRef, isPlaying, 0.8); // REMOVED: Conflicts with AutoPager
 
   const [readingProgress, setReadingProgress] = useState(0);
 
