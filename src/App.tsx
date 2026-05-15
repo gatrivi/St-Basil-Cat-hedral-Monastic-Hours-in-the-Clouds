@@ -1,10 +1,10 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Bell, Play, Pause, Volume2, VolumeX, Clock, AlertCircle, Copy, Check, Menu, X, Mic, Waves, Sun, Moon, Sunrise, Sunset } from 'lucide-react';
+import { Bell, Play, Pause, Volume2, VolumeX, Clock, AlertCircle, Copy, Check, Menu, X, Mic, Waves, Sun, Moon, Sunrise, Sunset, Eye, EyeOff } from 'lucide-react';
 import { format, isAfter, parse } from 'date-fns';
 import { es } from 'date-fns/locale';
 import Markdown from 'react-markdown';
-import { getCurrentAndNextHour, HOURS_SCHEDULE, LiturgicalHour } from './lib/hours';
+import { getCurrentAndNextHour, HOURS_SCHEDULE, LiturgicalHour, HourName } from './lib/hours';
 import { getFragmentForHour, LiturgicalFragment, FRAGMENTS_BY_HOUR } from './lib/liturgicalFragments';
 import { useBackground } from './lib/backgrounds';
 import { useCosmicResonator } from './sacred/useCosmicResonator';
@@ -12,14 +12,26 @@ import { SacredDrawing } from './sacred/procedural-rose';
 import { generatePrayerText, generateAudioOrFallback, SpeechController } from './services/gemini';
 import { Recorder } from './components/Recorder';
 import { AutoPager } from './components/AutoPager';
+import { IncenseTrail } from './components/IncenseTrail';
 import { getPrayerRecordingMetadata } from './services/recordings';
 
 // Declare the version injected by Vite
 declare const __APP_VERSION__: string;
-const VERSION = '1.3.0'; // Jumping to 1.3.0 for this major integration
+const VERSION = '1.3.0'; 
 
 // A simple bell sound (public domain/CC0)
 const BELL_SOUND_URL = 'https://upload.wikimedia.org/wikipedia/commons/b/b4/Bell-sound.ogg';
+
+// ─── Temporal Color Mapping ───
+const HOUR_COLORS: Record<HourName, string> = {
+  'Maitines': '#4a4e69', // Deep Indigo
+  'Laudes': '#f28482',   // Soft Rose
+  'Tercia': '#f6bd60',   // Amber
+  'Sexta': '#d4af37',    // Gold
+  'Nona': '#b5838d',     // Muted Crimson
+  'Vísperas': '#6d597a',  // Dusk Violet
+  'Completas': '#22223b', // Midnight Blue
+};
 
 // ─── Hard Reset for Smart TVs ───
 const rechargeChapel = () => {
@@ -44,11 +56,8 @@ function useGlacierScroll(ref: React.RefObject<HTMLDivElement | null>, active: b
       lastTime = time;
       
       if (ref.current) {
-        // Significantly slower: speed is in pixels per second
         scrollPos += (speed * dt) / 1000;
         ref.current.scrollTop = scrollPos;
-        
-        // If we reach the end, reset very slowly to create a loop
         if (scrollPos >= ref.current.scrollHeight - ref.current.clientHeight) {
           scrollPos = 0;
         }
@@ -165,20 +174,32 @@ function BackgroundLayers({ currentHour }: { currentHour: LiturgicalHour | null 
 
 function Chronogram({ currentTime, currentHour }: { currentTime: Date, currentHour: LiturgicalHour | null }) {
   const radius = 2200; // Giant wheel radius
+  const [offsetAngle, setOffsetAngle] = useState(0);
+  const snapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const totalMinutes = currentTime.getHours() * 60 + currentTime.getMinutes() + currentTime.getSeconds() / 60;
   const dayProgress = totalMinutes / (24 * 60);
   
-  // Each hour is 15 degrees (360/24)
-  // We want the current time to be at the center of the sidebar height
-  // The wheel rotates so that current angle is 0 (horizontal)
-  const currentAngle = dayProgress * 360;
+  const baseAngle = dayProgress * 360;
+
+  const handleWheel = (e: React.WheelEvent) => {
+    setOffsetAngle(prev => prev + e.deltaY * 0.05);
+    
+    if (snapTimer.current) clearTimeout(snapTimer.current);
+    snapTimer.current = setTimeout(() => {
+      setOffsetAngle(0);
+    }, 2000);
+  };
 
   return (
-    <div className="flex-1 relative overflow-hidden mt-4 mb-4">
+    <div 
+      className="flex-1 relative overflow-hidden mt-4 mb-4 cursor-ns-resize"
+      onWheel={handleWheel}
+    >
       <div 
-        className="absolute left-0 top-1/2 w-full transition-transform duration-1000 ease-in-out"
+        className="absolute left-0 top-1/2 w-full transition-transform duration-500 ease-out"
         style={{ 
-          transform: `rotate(${-currentAngle}deg)`, 
+          transform: `rotate(${-(baseAngle + offsetAngle)}deg)`, 
           transformOrigin: `${radius}px 0px`,
           height: '0px'
         }}
@@ -197,7 +218,7 @@ function Chronogram({ currentTime, currentHour }: { currentTime: Date, currentHo
                 transformOrigin: '0 0',
                 left: '0',
                 top: '0',
-                opacity: Math.abs(((angle - currentAngle + 360) % 360) - 180) > 160 ? 1 : 0.15,
+                opacity: Math.abs(((angle - (baseAngle + offsetAngle) + 360) % 360) - 180) > 160 ? 1 : 0.15,
                 transition: 'opacity 0.5s'
               }}
             >
@@ -217,8 +238,10 @@ function Chronogram({ currentTime, currentHour }: { currentTime: Date, currentHo
         })}
       </div>
       
-      {/* Center indicator line */}
       <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-[1px] bg-[var(--color-monastery-accent)]/20 pointer-events-none" />
+      {Math.abs(offsetAngle) > 1 && (
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[8px] uppercase tracking-widest opacity-40 animate-pulse">Explorando...</div>
+      )}
     </div>
   );
 }
@@ -245,11 +268,11 @@ export default function App() {
     try { return localStorage.getItem('cathedral-ambient') === 'true'; } catch { return false; }
   });
   const [hasRecording, setHasRecording] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const bellRef = useRef<HTMLAudioElement | null>(null);
   const speechRef = useRef<SpeechController | null>(null);
-  const speechProgressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const touchStartX = useRef<number | null>(null);
   const lastPlayedHourRef = useRef<string | null>(null);
   const prayerTextRef = useRef<HTMLDivElement | null>(null);
@@ -257,8 +280,13 @@ export default function App() {
 
   const [readingProgress, setReadingProgress] = useState(0);
 
-  // Glacier Scroll Activation
-  useGlacierScroll(prayerTextRef, isPlaying && !isLoadingText, 30);
+  useEffect(() => {
+    if (currentHour) {
+      const color = HOUR_COLORS[currentHour.name] || '#d4af37';
+      document.documentElement.style.setProperty('--color-monastery-accent', color);
+    }
+  }, [currentHour]);
+
   useGlacierScroll(sidepaneRef, !sidebarOpen, 8);
 
   useEffect(() => {
@@ -335,10 +363,6 @@ export default function App() {
     }
   }, [isLoadingAudio, isLoadingText]);
 
-  const syncAndPlay = useCallback((hour: LiturgicalHour, now: Date) => {
-    playHour(hour);
-  }, [playHour]);
-
   const togglePlayPause = useCallback(() => {
     if (autoplayBlocked) {
       handleManualStart();
@@ -363,6 +387,10 @@ export default function App() {
     });
   }, []);
 
+  const toggleFocusMode = useCallback(() => {
+    setFocusMode(prev => !prev);
+  }, []);
+
   const handleManualStart = () => {
     setAutoplayBlocked(false);
     initResonator(true);
@@ -374,7 +402,7 @@ export default function App() {
     if (!hour) return;
     const fragments = FRAGMENTS_BY_HOUR[hour.name];
     if (!fragments || fragments.length === 0) {
-      setFragment({ title: 'Oraci├│n', text: '**Am├⌐n.**' });
+      setFragment({ title: 'Oración', text: '**Amén.**' });
       return;
     }
     const safeIndex = ((index % fragments.length) + fragments.length) % fragments.length;
@@ -485,6 +513,7 @@ export default function App() {
       if (e.code === 'Space') { e.preventDefault(); togglePlayPause(); }
       if (e.key.toLowerCase() === 'm') { e.preventDefault(); toggleMute(); }
       if (e.key.toLowerCase() === 'a') { e.preventDefault(); toggleAmbient(); }
+      if (e.key.toLowerCase() === 'z') { e.preventDefault(); toggleFocusMode(); }
       if (e.key.toLowerCase() === 'v') { e.preventDefault(); setShowRecorder(prev => !prev); }
       if (e.key.toLowerCase() === 'c') { e.preventDefault(); handleCopy(); }
       if (e.key === 'ArrowRight') { e.preventDefault(); goToNextFragment(); }
@@ -492,22 +521,23 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [togglePlayPause, toggleMute, toggleAmbient, handleCopy, goToNextFragment, goToPrevFragment, showRecorder]);
+  }, [togglePlayPause, toggleMute, toggleAmbient, toggleFocusMode, handleCopy, goToNextFragment, goToPrevFragment, showRecorder]);
 
   useEffect(() => {
     return () => { cleanupResonator(); };
   }, [cleanupResonator]);
 
   return (
-    <div className="h-screen flex overflow-hidden relative cursor-default" onClick={() => { if (autoplayBlocked) handleManualStart(); }}>
+    <div className={`h-screen flex overflow-hidden relative cursor-default ${focusMode ? 'focus-mode' : ''}`} onClick={() => { if (autoplayBlocked) handleManualStart(); }}>
       <BackgroundLayers currentHour={currentHour} />
+      <IncenseTrail />
       <LightShafts />
       <DustMotes />
       <CelestialClockwork />
       <audio ref={bellRef} src={BELL_SOUND_URL} preload="auto" />
       <audio ref={audioRef} onEnded={() => { setIsPlaying(false); }} onPause={() => setIsPlaying(false)} onPlay={() => setIsPlaying(true)} onTimeUpdate={(e) => { const audio = e.currentTarget; if (audio.duration) { setAudioProgress(audio.currentTime); setAudioDuration(audio.duration); } }} onLoadedMetadata={(e) => setAudioDuration(e.currentTarget.duration || 0)} />
 
-      <header className="md:hidden fixed top-0 left-0 right-0 z-40 glass-panel border-b border-[var(--color-monastery-accent)]/10 h-14 flex items-center justify-between px-4">
+      <header className={`md:hidden fixed top-0 left-0 right-0 z-40 glass-panel border-b border-[var(--color-monastery-accent)]/10 h-14 flex items-center justify-between px-4 transition-all duration-700 ${focusMode ? 'opacity-0 pointer-events-none -translate-y-full' : 'opacity-100'}`}>
         <button onClick={(e) => { e.stopPropagation(); setSidebarOpen(!sidebarOpen); }} className="p-2 opacity-60 hover:opacity-100 transition-opacity">
           {sidebarOpen ? <X size={18} /> : <Menu size={18} />}
         </button>
@@ -519,7 +549,7 @@ export default function App() {
       </header>
 
       <aside 
-        className={`fixed md:static inset-y-0 left-0 z-40 w-72 glass-panel border-r border-[var(--color-monastery-accent)]/10 flex flex-col transition-transform duration-500 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} pt-14 md:pt-0 giant-wheel-sidebar`}
+        className={`fixed md:static inset-y-0 left-0 z-40 w-72 glass-panel border-r border-[var(--color-monastery-accent)]/10 flex flex-col transition-all duration-700 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} ${focusMode ? 'md:-translate-x-full md:opacity-0 pointer-events-none' : 'opacity-100'} pt-14 md:pt-0 giant-wheel-sidebar`}
       >
         <div className="hidden md:block p-6 text-center border-b border-white/5">
           <motion.h1 key={format(currentTime, 'HH:mm')} initial={{ opacity: 0.5 }} animate={{ opacity: 1 }} transition={{ duration: 1.5 }} className="font-serif text-4xl text-[var(--color-monastery-accent)]">{format(currentTime, 'HH:mm')}</motion.h1>
@@ -541,7 +571,7 @@ export default function App() {
             </AnimatePresence>
           </div>
           <div className="p-5 border-b border-white/5 opacity-70">
-            <p className="text-[10px] uppercase tracking-widest opacity-50 mb-2">Pr├│xima Hora</p>
+            <p className="text-[10px] uppercase tracking-widest opacity-50 mb-2">Próxima Hora</p>
             <AnimatePresence mode="wait">
               <motion.div key={nextHour?.name || 'empty'} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1.2 }}>
                 <h2 className="font-serif text-xl">{nextHour?.name || '...'}</h2>
@@ -578,11 +608,10 @@ export default function App() {
       <main className="flex-1 flex flex-col relative min-w-0 pt-14 md:pt-0" onTouchStart={(e) => { touchStartX.current = e.changedTouches[0].screenX; }} onTouchEnd={(e) => { if (touchStartX.current == null) return; const diff = touchStartX.current - e.changedTouches[0].screenX; if (Math.abs(diff) > 50) { if (diff > 0) goToNextFragment(); else goToPrevFragment(); } touchStartX.current = null; }}>
         <div 
           ref={prayerTextRef}
-          className="flex-1 overflow-y-auto custom-scrollbar mask-fade-y flex flex-col items-center justify-center p-6 md:p-12 lg:p-20 relative"
+          className="flex-1 overflow-hidden flex flex-col items-center p-6 md:p-12 lg:p-20 relative"
         >
           <div className="sacred-frame" />
           
-          {/* Recorder Overlay */}
           <AnimatePresence>
             {showRecorder && currentHour && (
               <motion.div
@@ -677,13 +706,17 @@ export default function App() {
               )}
             </AnimatePresence>
           </div>
-          <div className="h-96" />
         </div>
 
-        <div className={`h-12 glass-panel border-t border-[var(--color-monastery-accent)]/10 flex items-center px-4 md:px-6 gap-3 md:gap-4 opacity-85 md:opacity-40 md:hover:opacity-90 transition-opacity duration-500 ${autoplayBlocked ? 'opacity-70' : ''}`} onClick={(e) => e.stopPropagation()}>
+        <div className={`h-12 glass-panel border-t border-[var(--color-monastery-accent)]/10 flex items-center px-4 md:px-6 gap-3 md:gap-4 transition-all duration-700 ${focusMode ? 'opacity-0 pointer-events-none translate-y-full' : 'opacity-85 md:opacity-40 md:hover:opacity-90'} ${autoplayBlocked ? 'opacity-70' : ''}`} onClick={(e) => e.stopPropagation()}>
           <button onClick={togglePlayPause} disabled={isLoadingAudio || isLoadingText} className="flex items-center justify-center w-9 h-9 md:w-8 md:h-8 rounded-full border border-white/20 hover:border-[var(--color-monastery-accent)] hover:text-[var(--color-monastery-accent)] transition-all disabled:opacity-30 shrink-0" title="Reproducir / Pausar (Espacio)">
             {isLoadingAudio || (isLoadingText && !fragment) ? <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 2, ease: "linear" }}><Bell size={14} className="md:size-3" /></motion.div> : isPlaying ? <Pause size={14} className="md:size-3" /> : <Play size={14} className="ml-0.5 md:size-3" />}
           </button>
+          
+          <button onClick={toggleFocusMode} className="hover:text-[var(--color-monastery-accent)] transition-colors shrink-0 opacity-70 hover:opacity-100" title="Modo Zen (Z)">
+            {focusMode ? <EyeOff size={16} className="md:size-3.5" /> : <Eye size={16} className="md:size-3.5" />}
+          </button>
+
           <button onClick={toggleMute} className="hover:text-[var(--color-monastery-accent)] transition-colors shrink-0 opacity-70 hover:opacity-100" title="Silenciar (M)">
             {isMuted ? <VolumeX size={16} className="md:size-3.5" /> : <Volume2 size={16} className="md:size-3.5" />}
           </button>
@@ -722,6 +755,16 @@ export default function App() {
 
           {autoplayBlocked && !isPlaying && <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-[10px] uppercase tracking-widest text-[var(--color-monastery-accent)] shrink-0">Toca para comenzar</motion.span>}
         </div>
+
+        {focusMode && (
+          <div 
+            className="fixed bottom-0 left-0 right-0 h-4 z-50 cursor-pointer opacity-0 hover:opacity-100 transition-opacity bg-gradient-to-t from-[var(--color-monastery-accent)]/20 to-transparent flex items-center justify-center"
+            onClick={toggleFocusMode}
+            title="Salir del Modo Zen (Z)"
+          >
+            <div className="w-12 h-1 bg-[var(--color-monastery-accent)]/40 rounded-full" />
+          </div>
+        )}
       </main>
     </div>
   );

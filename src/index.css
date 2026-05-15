@@ -138,14 +138,30 @@ body {
     115deg,
     transparent 0%,
     transparent 15%,
-    rgba(212, 175, 55, 0.05) 18%,
-    rgba(212, 175, 55, 0.08) 20%,
-    rgba(212, 175, 55, 0.05) 22%,
+    var(--color-monastery-accent) 18%,
+    var(--color-monastery-accent) 20%,
+    var(--color-monastery-accent) 22%,
     transparent 25%,
     transparent 40%
   );
-  filter: blur(30px);
+  opacity: 0.1;
+  filter: blur(40px);
   animation: sweep 25s ease-in-out infinite alternate;
+}
+
+/* ... existing keyframes ... */
+
+/* Focus Mode Refinements */
+.focus-mode .sacred-frame {
+  border-color: var(--color-monastery-accent);
+  opacity: 0.2;
+  transition: all 2s ease;
+}
+
+.focus-mode .rose-container {
+  opacity: 0.4;
+  transform: scale(1.1);
+  transition: all 3s ease;
 }
 
 @keyframes sweep {

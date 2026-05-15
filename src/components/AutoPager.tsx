@@ -82,10 +82,11 @@ export const AutoPager: React.FC<AutoPagerProps> = ({ children, progress }) => {
 
   // Calculate rotation and translation to keep the "current line" at roughly the same vertical spot
   const rotationAngle = (contentHeight * progress) / radius * (180 / Math.PI);
-  const translateY = -progress * contentHeight * 0.85;
+  // Keep the text scrolling naturally based on progress, without massive artificial offsets
+  const translateY = -progress * contentHeight;
 
   return (
-    <div ref={containerRef} className="relative overflow-hidden w-full h-full flex flex-col items-center justify-start pt-[40vh]">
+    <div ref={containerRef} className="relative overflow-hidden w-full h-full flex flex-col items-center justify-start pt-12 md:pt-20">
       {/* Vignette/Fade overlays */}
       <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-[var(--color-monastery-bg)] to-transparent z-10 pointer-events-none" />
       <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[var(--color-monastery-bg)] to-transparent z-10 pointer-events-none" />
@@ -102,7 +103,7 @@ export const AutoPager: React.FC<AutoPagerProps> = ({ children, progress }) => {
         }}
         className="relative"
       >
-        <div ref={contentRef} className="w-full text-center px-6 md:px-20 relative pb-[60vh]">
+        <div ref={contentRef} className="w-full text-center px-6 md:px-20 relative pb-40">
           <Markdown
             components={{
               p: ({ children }) => <p className="mb-10 text-2xl md:text-5xl leading-relaxed font-serif">{wrapCharacters(children)}</p>,
