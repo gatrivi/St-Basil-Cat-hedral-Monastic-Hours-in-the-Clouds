@@ -95,21 +95,33 @@ body {
   background: rgba(212, 175, 55, 0.3);
 }
 
-/* Mask fade for glacier scrolling */
+/* Mask fade for global viewport vignette */
 .mask-fade-y {
   mask-image: linear-gradient(
     to bottom,
     transparent 0%,
-    black 10%,
-    black 90%,
+    black 15%,
+    black 85%,
     transparent 100%
   );
   -webkit-mask-image: linear-gradient(
     to bottom,
     transparent 0%,
-    black 10%,
-    black 90%,
+    black 15%,
+    black 85%,
     transparent 100%
+  );
+}
+
+.global-vignette {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at center,
+    transparent 40%,
+    rgba(10, 5, 2, 0.4) 100%
   );
 }
 

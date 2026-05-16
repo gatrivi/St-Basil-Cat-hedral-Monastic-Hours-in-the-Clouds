@@ -87,10 +87,6 @@ export const AutoPager: React.FC<AutoPagerProps> = ({ children, progress }) => {
 
   return (
     <div ref={containerRef} className="relative overflow-hidden w-full h-full flex flex-col items-center justify-start pt-12 md:pt-20">
-      {/* Vignette/Fade overlays */}
-      <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-[var(--color-monastery-bg)] to-transparent z-10 pointer-events-none" />
-      <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[var(--color-monastery-bg)] to-transparent z-10 pointer-events-none" />
-
       <motion.div
         animate={{ 
           rotate: -rotationAngle,

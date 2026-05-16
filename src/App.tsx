@@ -530,6 +530,7 @@ export default function App() {
   return (
     <div className={`h-screen flex overflow-hidden relative cursor-default ${focusMode ? 'focus-mode' : ''}`} onClick={() => { if (autoplayBlocked) handleManualStart(); }}>
       <BackgroundLayers currentHour={currentHour} />
+      <div className="global-vignette" />
       <IncenseTrail />
       <LightShafts />
       <DustMotes />
@@ -558,7 +559,7 @@ export default function App() {
         
         <div 
           ref={sidepaneRef}
-          className="flex-1 overflow-y-auto custom-scrollbar mask-fade-y flex flex-col min-h-0"
+          className="flex-1 overflow-y-auto custom-scrollbar flex flex-col min-h-0"
         >
           <div className="p-5 border-b border-white/5">
             <p className="text-[10px] uppercase tracking-widest opacity-50 mb-2 flex items-center gap-1.5"><Clock size={10} /> Hora Actual</p>
@@ -605,7 +606,7 @@ export default function App() {
 
       {sidebarOpen && <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />}
 
-      <main className="flex-1 flex flex-col relative min-w-0 pt-14 md:pt-0" onTouchStart={(e) => { touchStartX.current = e.changedTouches[0].screenX; }} onTouchEnd={(e) => { if (touchStartX.current == null) return; const diff = touchStartX.current - e.changedTouches[0].screenX; if (Math.abs(diff) > 50) { if (diff > 0) goToNextFragment(); else goToPrevFragment(); } touchStartX.current = null; }}>
+      <main className="flex-1 flex flex-col relative min-w-0 pt-14 md:pt-0 mask-fade-y" onTouchStart={(e) => { touchStartX.current = e.changedTouches[0].screenX; }} onTouchEnd={(e) => { if (touchStartX.current == null) return; const diff = touchStartX.current - e.changedTouches[0].screenX; if (Math.abs(diff) > 50) { if (diff > 0) goToNextFragment(); else goToPrevFragment(); } touchStartX.current = null; }}>
         <div 
           ref={prayerTextRef}
           className="flex-1 overflow-hidden flex flex-col items-center p-6 md:p-12 lg:p-20 relative"
