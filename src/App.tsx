@@ -246,14 +246,13 @@ export default function App() {
     setIsLoadingText(true);
     setError(null);
     setUsingFallback(false);
-    setFragment(null);
     setAudioProgress(0);
     
     try {
       const now = new Date();
       const text = await generatePrayerText(hour.name, now);
       setFullPrayerText(text);
-      setFragment({ title: hour.name, text });
+      // Display stays on liturgical slot (ticker); audio uses generated prayer only
       setIsLoadingText(false);
       
       setIsLoadingAudio(true);

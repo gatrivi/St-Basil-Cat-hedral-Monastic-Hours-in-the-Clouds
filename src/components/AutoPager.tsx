@@ -78,7 +78,7 @@ export const AutoPager: React.FC<AutoPagerProps> = ({ children, progress, title,
   return (
     <div className="flex flex-col w-full h-full min-h-0">
       {(title || subtitle) && (
-        <header className="shrink-0 text-center mb-3 px-2 z-10">
+        <header className="shrink-0 text-center mb-3 px-2 z-10 hidden md:block">
           {subtitle && (
             <p className="text-xs uppercase tracking-[0.25em] opacity-50 mb-1">{subtitle}</p>
           )}
