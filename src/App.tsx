@@ -20,7 +20,7 @@ import { getPrayerRecordingMetadata } from './services/recordings';
 
 // Declare the version injected by Vite
 declare const __APP_VERSION__: string;
-const VERSION = '1.3.1';
+const VERSION = '1.3.2';
 
 type FontScale = 'sm' | 'md' | 'lg';
 const FONT_SCALE_KEY = 'cathedral-font-scale'; 
@@ -430,7 +430,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const shouldBeActive = (isPlaying || ambientEnabled) && !isMuted;
+    // Ambient drone only when user enables "Ambiente" (not during prayer playback)
+    const shouldBeActive = ambientEnabled && !isMuted;
     if (shouldBeActive) startResonator();
     else stopResonator();
   }, [isPlaying, ambientEnabled, isMuted, startResonator, stopResonator]);
