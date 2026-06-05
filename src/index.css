@@ -95,22 +95,55 @@ body {
   background: rgba(212, 175, 55, 0.3);
 }
 
-/* Mask fade for global viewport vignette */
-.mask-fade-y {
+/* Prayer viewport: more readable area, less aggressive fade */
+.prayer-main-view {
   mask-image: linear-gradient(
     to bottom,
     transparent 0%,
-    black 15%,
-    black 85%,
+    black 6%,
+    black 92%,
     transparent 100%
   );
   -webkit-mask-image: linear-gradient(
     to bottom,
     transparent 0%,
-    black 15%,
-    black 85%,
+    black 6%,
+    black 92%,
     transparent 100%
   );
+}
+
+/* Font scale for vision accessibility */
+html[data-font-scale='sm'] {
+  --prayer-text-scale: 0.88;
+}
+html[data-font-scale='md'] {
+  --prayer-text-scale: 1;
+}
+html[data-font-scale='lg'] {
+  --prayer-text-scale: 1.22;
+}
+
+.prayer-verse {
+  font-size: calc(clamp(1.125rem, 2.2vw + 0.5rem, 2.25rem) * var(--prayer-text-scale, 1));
+}
+
+.prayer-markdown-body .prayer-verse {
+  line-height: 1.65;
+}
+
+.focus-mode .prayer-timing-bar {
+  display: none;
+}
+
+.playlist-rail-scroll {
+  scroll-behavior: smooth;
+}
+
+@media (min-width: 1920px) {
+  html[data-font-scale='lg'] {
+    --prayer-text-scale: 1.35;
+  }
 }
 
 .global-vignette {

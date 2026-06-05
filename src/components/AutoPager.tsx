@@ -5,6 +5,8 @@ import Markdown from 'react-markdown';
 interface AutoPagerProps {
   children: string;
   progress: number;
+  title?: string;
+  subtitle?: string;
 }
 
 // Function to safely wrap text nodes in spans for DOM manipulation
@@ -27,7 +29,7 @@ const wrapCharacters = (children: React.ReactNode): React.ReactNode => {
   });
 };
 
-export const AutoPager: React.FC<AutoPagerProps> = ({ children, progress }) => {
+export const AutoPager: React.FC<AutoPagerProps> = ({ children, progress, title, subtitle }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [contentHeight, setContentHeight] = useState(0);
@@ -86,7 +88,17 @@ export const AutoPager: React.FC<AutoPagerProps> = ({ children, progress }) => {
   const translateY = -progress * contentHeight;
 
   return (
-    <div ref={containerRef} className="relative overflow-hidden w-full h-full flex flex-col items-center justify-start pt-12 md:pt-20">
+    <div ref={containerRef} className="relative overflow-hidden w-full h-full flex flex-col items-center justify-start pt-2 md:pt-4 prayer-text-scroll">
+      {(title || subtitle) && (
+        <header className="shrink-0 text-center mb-4 md:mb-6 px-2 z-10">
+          {subtitle && (
+            <p className="text-[10px] md:text-xs uppercase tracking-[0.25em] opacity-50 mb-1">{subtitle}</p>
+          )}
+          {title && (
+            <h2 className="font-serif text-2xl md:text-4xl text-[var(--color-monastery-accent)] leading-tight">{title}</h2>
+          )}
+        </header>
+      )}
       <motion.div
         animate={{ 
           rotate: -rotationAngle,
@@ -99,11 +111,11 @@ export const AutoPager: React.FC<AutoPagerProps> = ({ children, progress }) => {
         }}
         className="relative"
       >
-        <div ref={contentRef} className="w-full text-center px-6 md:px-20 relative pb-40">
+        <div ref={contentRef} className="w-full text-center px-2 md:px-8 relative pb-24 prayer-markdown-body">
           <Markdown
             components={{
-              p: ({ children }) => <p className="mb-10 text-2xl md:text-5xl leading-relaxed font-serif">{wrapCharacters(children)}</p>,
-              h2: ({ children }) => <h2 className="font-serif text-4xl md:text-7xl mb-12 text-center text-[var(--color-monastery-accent)]">{wrapCharacters(children)}</h2>,
+              p: ({ children }) => <p className="mb-8 prayer-verse leading-relaxed font-serif">{wrapCharacters(children)}</p>,
+              h2: ({ children }) => <h3 className="font-serif text-xl md:text-2xl mb-6 text-center text-[var(--color-monastery-accent)]">{wrapCharacters(children)}</h3>,
               em: ({ children }) => <em className="italic opacity-80">{children}</em>,
               strong: ({ children }) => <strong className="font-bold text-[var(--color-monastery-accent)]">{children}</strong>,
             }}

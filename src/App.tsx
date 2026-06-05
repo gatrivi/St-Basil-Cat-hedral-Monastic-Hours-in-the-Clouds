@@ -5,7 +5,10 @@ import { format, isAfter, parse } from 'date-fns';
 import { es } from 'date-fns/locale';
 import Markdown from 'react-markdown';
 import { getCurrentAndNextHour, HOURS_SCHEDULE, LiturgicalHour, HourName } from './lib/hours';
-import { getFragmentForHour, LiturgicalFragment, FRAGMENTS_BY_HOUR } from './lib/liturgicalFragments';
+import { LiturgicalFragment } from './lib/liturgicalFragments';
+import { DAY_SLOTS, getDayPosition, isAngelusHour } from './lib/liturgicalDay';
+import { DayPlaylistSidebar } from './components/DayPlaylistSidebar';
+import { PrayerTimingBar } from './components/PrayerTimingBar';
 import { useBackground } from './lib/backgrounds';
 import { useCosmicResonator } from './sacred/useCosmicResonator';
 import { SacredDrawing } from './sacred/procedural-rose';
@@ -17,7 +20,10 @@ import { getPrayerRecordingMetadata } from './services/recordings';
 
 // Declare the version injected by Vite
 declare const __APP_VERSION__: string;
-const VERSION = '1.3.0'; 
+const VERSION = '1.3.1';
+
+type FontScale = 'sm' | 'md' | 'lg';
+const FONT_SCALE_KEY = 'cathedral-font-scale'; 
 
 // A simple bell sound (public domain/CC0)
 const BELL_SOUND_URL = 'https://upload.wikimedia.org/wikipedia/commons/b/b4/Bell-sound.ogg';
@@ -41,34 +47,6 @@ const rechargeChapel = () => {
   } catch (e) { /* ignore */ }
   window.location.reload();
 };
-
-// ─── Glacier Scroll Hook ───
-function useGlacierScroll(ref: React.RefObject<HTMLDivElement | null>, active: boolean, speed = 0.05) {
-  useEffect(() => {
-    if (!active || !ref.current) return;
-    
-    let lastTime = performance.now();
-    let scrollPos = ref.current.scrollTop;
-    let frame: number;
-
-    const step = (time: number) => {
-      const dt = time - lastTime;
-      lastTime = time;
-      
-      if (ref.current) {
-        scrollPos += (speed * dt) / 1000;
-        ref.current.scrollTop = scrollPos;
-        if (scrollPos >= ref.current.scrollHeight - ref.current.clientHeight) {
-          scrollPos = 0;
-        }
-      }
-      frame = requestAnimationFrame(step);
-    };
-
-    frame = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(frame);
-  }, [active, ref, speed]);
-}
 
 function useParallax() {
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -172,8 +150,8 @@ function BackgroundLayers({ currentHour }: { currentHour: LiturgicalHour | null 
   );
 }
 
-function Chronogram({ currentTime, currentHour }: { currentTime: Date, currentHour: LiturgicalHour | null }) {
-  const radius = 2200; // Giant wheel radius
+function Chronogram({ currentTime, currentHour, compact = false }: { currentTime: Date, currentHour: LiturgicalHour | null, compact?: boolean }) {
+  const radius = compact ? 1200 : 2200;
   const [offsetAngle, setOffsetAngle] = useState(0);
   const snapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -193,7 +171,7 @@ function Chronogram({ currentTime, currentHour }: { currentTime: Date, currentHo
 
   return (
     <div 
-      className="flex-1 relative overflow-hidden mt-4 mb-4 cursor-ns-resize"
+      className={`relative overflow-hidden cursor-ns-resize ${compact ? 'h-full mt-0' : 'flex-1 mt-4 mb-4'}`}
       onWheel={handleWheel}
     >
       <div 
@@ -207,6 +185,7 @@ function Chronogram({ currentTime, currentHour }: { currentTime: Date, currentHo
         {Array.from({ length: 24 }).map((_, h) => {
           const angle = (h / 24) * 360;
           const isLiturgical = HOURS_SCHEDULE.find(sh => parseInt(sh.timeString.split(':')[0]) === h);
+          const isAngelus = isAngelusHour(h);
           const isCurrent = currentHour && parseInt(currentHour.timeString.split(':')[0]) === h;
           
           return (
@@ -222,14 +201,21 @@ function Chronogram({ currentTime, currentHour }: { currentTime: Date, currentHo
                 transition: 'opacity 0.5s'
               }}
             >
-              <div className={`flex items-center gap-4 px-6 py-2 transition-all ${isCurrent ? 'scale-110' : 'scale-100'}`}>
-                <div className={`w-8 h-[1px] ${isLiturgical ? 'bg-[var(--color-monastery-accent)]' : 'bg-white/20'}`} />
-                <span className={`font-mono text-[10px] ${isLiturgical ? 'text-[var(--color-monastery-accent)] font-bold' : 'opacity-50'}`}>
-                  {h.toString().padStart(2, '0')}:00
-                </span>
-                {isLiturgical && (
-                  <span className={`font-serif text-sm transition-colors ${isCurrent ? 'text-[var(--color-monastery-accent)]' : 'opacity-80'}`}>
-                    {isLiturgical.name}
+              <div className={`flex flex-col items-start gap-0.5 px-6 py-2 transition-all ${isCurrent ? 'scale-110' : 'scale-100'}`}>
+                <div className="flex items-center gap-4">
+                  <div className={`w-8 h-[1px] ${isLiturgical || isAngelus ? 'bg-[var(--color-monastery-accent)]' : 'bg-white/20'}`} />
+                  <span className={`font-mono text-[10px] ${isLiturgical || isAngelus ? 'text-[var(--color-monastery-accent)] font-bold' : 'opacity-50'}`}>
+                    {h.toString().padStart(2, '0')}:00
+                  </span>
+                  {isLiturgical && (
+                    <span className={`font-serif text-sm transition-colors ${isCurrent ? 'text-[var(--color-monastery-accent)]' : 'opacity-80'}`}>
+                      {isLiturgical.name}
+                    </span>
+                  )}
+                </div>
+                {isAngelus && (
+                  <span className="font-serif text-[11px] text-[var(--color-monastery-accent)] opacity-90 ml-12 pl-1">
+                    Ángelus
                   </span>
                 )}
               </div>
@@ -269,6 +255,14 @@ export default function App() {
   });
   const [hasRecording, setHasRecording] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
+  const [fontScale, setFontScale] = useState<FontScale>(() => {
+    try {
+      const v = localStorage.getItem(FONT_SCALE_KEY);
+      if (v === 'sm' || v === 'md' || v === 'lg') return v;
+    } catch { /* ignore */ }
+    return 'md';
+  });
+  const [manualSlotIndex, setManualSlotIndex] = useState<number | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const bellRef = useRef<HTMLAudioElement | null>(null);
@@ -276,7 +270,7 @@ export default function App() {
   const touchStartX = useRef<number | null>(null);
   const lastPlayedHourRef = useRef<string | null>(null);
   const prayerTextRef = useRef<HTMLDivElement | null>(null);
-  const sidepaneRef = useRef<HTMLDivElement | null>(null);
+  const manualSlotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [readingProgress, setReadingProgress] = useState(0);
 
@@ -287,38 +281,36 @@ export default function App() {
     }
   }, [currentHour]);
 
-  useGlacierScroll(sidepaneRef, !sidebarOpen, 8);
-
   useEffect(() => {
-    if (!isPlaying || !fragment) {
-      setReadingProgress(0);
-      return;
-    }
+    document.documentElement.dataset.fontScale = fontScale;
+    try {
+      localStorage.setItem(FONT_SCALE_KEY, fontScale);
+    } catch { /* ignore */ }
+  }, [fontScale]);
 
-    const wordCount = fragment.text.trim().split(/\s+/).length;
-    const estimatedSeconds = (wordCount / 70) * 60;
-    const duration = Math.max(20000, estimatedSeconds * 1000);
+  const cycleFontScale = useCallback(() => {
+    setFontScale(prev => (prev === 'sm' ? 'md' : prev === 'md' ? 'lg' : 'sm'));
+  }, []);
 
-    let start: number | null = null;
-    let animationFrame: number;
+  const syncSlotToView = useCallback((slotIndex: number) => {
+    const slot = DAY_SLOTS[slotIndex];
+    if (!slot) return;
+    setFragment(slot.fragment);
+    setFragmentIndex(slot.fragmentIndex);
+  }, []);
 
-    const animate = (timestamp: number) => {
-      if (!start) start = timestamp;
-      const elapsed = timestamp - start;
-      const progress = Math.min(1.05, elapsed / duration);
-      setReadingProgress(progress);
-      if (progress < 1.05) {
-        animationFrame = requestAnimationFrame(animate);
-      }
-    };
-
-    animationFrame = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(animationFrame);
-  }, [isPlaying, fragment]);
+  const bumpManualSlot = useCallback((delta: number) => {
+    const base = manualSlotIndex ?? getDayPosition(currentTime).slotIndex;
+    const next = (base + delta + DAY_SLOTS.length) % DAY_SLOTS.length;
+    setManualSlotIndex(next);
+    syncSlotToView(next);
+    lastInteractionRef.current = Date.now();
+    if (manualSlotTimerRef.current) clearTimeout(manualSlotTimerRef.current);
+    manualSlotTimerRef.current = setTimeout(() => setManualSlotIndex(null), 5 * 60 * 1000);
+  }, [currentTime, manualSlotIndex, syncSlotToView]);
 
   const { init: initResonator, start: startResonator, stop: stopResonator, playBell: playResonatorBell, cleanup: cleanupResonator } = useCosmicResonator();
   const lastInteractionRef = useRef<number>(Date.now());
-  const lastAutoRotationRef = useRef<number>(Date.now());
   const [fullPrayerText, setFullPrayerText] = useState<string>('');
 
   const handleCopy = useCallback(() => {
@@ -339,15 +331,20 @@ export default function App() {
     setAudioProgress(0);
     
     try {
-      const text = await generatePrayerText(hour.name);
+      const now = new Date();
+      const text = await generatePrayerText(hour.name, now);
       setFullPrayerText(text);
       setFragment({ title: hour.name, text });
       setIsLoadingText(false);
       
       setIsLoadingAudio(true);
-      const audioUrl = await generateAudioOrFallback(hour.name, text);
+      const audioResult = await generateAudioOrFallback(text, { hour: hour.name, index: fragmentIndex });
       if (audioRef.current) {
-        audioRef.current.src = audioUrl;
+        if (audioResult.mode === 'manual' && audioResult.url) {
+          audioRef.current.src = audioResult.url;
+        } else if (audioResult.mode === 'piper' && audioResult.base64) {
+          audioRef.current.src = `data:audio/wav;base64,${audioResult.base64}`;
+        }
         audioRef.current.play().catch(e => {
           console.warn("Autoplay blocked", e);
           setAutoplayBlocked(true);
@@ -361,7 +358,7 @@ export default function App() {
       setIsLoadingAudio(false);
       setIsLoadingText(false);
     }
-  }, [isLoadingAudio, isLoadingText]);
+  }, [isLoadingAudio, isLoadingText, fragmentIndex]);
 
   const togglePlayPause = useCallback(() => {
     if (autoplayBlocked) {
@@ -398,51 +395,32 @@ export default function App() {
     if (bellRef.current) bellRef.current.play();
   };
 
-  const updateFragment = useCallback((hour: LiturgicalHour | null, index: number) => {
-    if (!hour) return;
-    const fragments = FRAGMENTS_BY_HOUR[hour.name];
-    if (!fragments || fragments.length === 0) {
-      setFragment({ title: 'Oración', text: '**Amén.**' });
-      return;
-    }
-    const safeIndex = ((index % fragments.length) + fragments.length) % fragments.length;
-    setFragment(fragments[safeIndex]);
-  }, []);
-
   const goToNextFragment = useCallback(() => {
-    if (!currentHour) return;
-    const fragments = FRAGMENTS_BY_HOUR[currentHour.name];
-    if (!fragments) return;
-    lastInteractionRef.current = Date.now();
-    setFragmentIndex(prev => {
-      const next = (prev + 1) % fragments.length;
-      updateFragment(currentHour, next);
-      return next;
-    });
-  }, [currentHour, updateFragment]);
+    bumpManualSlot(1);
+  }, [bumpManualSlot]);
 
   const goToPrevFragment = useCallback(() => {
-    if (!currentHour) return;
-    const fragments = FRAGMENTS_BY_HOUR[currentHour.name];
-    if (!fragments) return;
-    lastInteractionRef.current = Date.now();
-    setFragmentIndex(prev => {
-      const next = (prev - 1 + fragments.length) % fragments.length;
-      updateFragment(currentHour, next);
-      return next;
-    });
-  }, [currentHour, updateFragment]);
+    bumpManualSlot(-1);
+  }, [bumpManualSlot]);
+
+  const activeSlotIndex = manualSlotIndex ?? getDayPosition(currentTime).slotIndex;
+
+  useEffect(() => {
+    const pos = getDayPosition(currentTime);
+    setReadingProgress(pos.slotProgress);
+    if (manualSlotIndex === null) {
+      syncSlotToView(pos.slotIndex);
+    }
+  }, [currentTime, manualSlotIndex, syncSlotToView]);
 
   useEffect(() => {
     const now = new Date();
     const { currentHour: curr, nextHour: next } = getCurrentAndNextHour(now);
     setCurrentHour(curr);
     setNextHour(next);
-    if (curr) {
-      updateFragment(curr, 0);
-    }
+    syncSlotToView(getDayPosition(now).slotIndex);
     initResonator(true);
-  }, []);
+  }, [syncSlotToView]);
 
   useEffect(() => {
     const events = ['mousemove', 'scroll', 'touchstart', 'keydown'];
@@ -476,10 +454,12 @@ export default function App() {
       setCurrentHour(curr);
       setNextHour(next);
 
+      if (manualSlotIndex === null) {
+        syncSlotToView(getDayPosition(now).slotIndex);
+      }
+
       if (hourChanged && curr) {
-        setFragmentIndex(0);
-        updateFragment(curr, 0);
-        lastAutoRotationRef.current = Date.now();
+        setManualSlotIndex(null);
         if (!isPlaying && !isLoadingAudio && !isLoadingText) {
           const hourId = `${format(now, 'yyyy-MM-dd')}-${curr.name}`;
           if (lastPlayedHourRef.current !== hourId) {
@@ -488,18 +468,10 @@ export default function App() {
             playHour(curr);
           }
         }
-        return;
-      }
-
-      const idleMs = Date.now() - lastInteractionRef.current;
-      const sinceRotationMs = Date.now() - lastAutoRotationRef.current;
-      if (curr && idleMs > 3 * 60 * 1000 && sinceRotationMs > 10 * 60 * 1000) {
-        goToNextFragment();
-        lastAutoRotationRef.current = Date.now();
       }
     }, 1000);
     return () => clearInterval(timer);
-  }, [currentHour, isPlaying, isLoadingAudio, isLoadingText, playHour, playResonatorBell, goToNextFragment, updateFragment]);
+  }, [currentHour, isPlaying, isLoadingAudio, isLoadingText, playHour, playResonatorBell, manualSlotIndex, syncSlotToView]);
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -516,12 +488,13 @@ export default function App() {
       if (e.key.toLowerCase() === 'z') { e.preventDefault(); toggleFocusMode(); }
       if (e.key.toLowerCase() === 'v') { e.preventDefault(); setShowRecorder(prev => !prev); }
       if (e.key.toLowerCase() === 'c') { e.preventDefault(); handleCopy(); }
+      if (e.key.toLowerCase() === 'f') { e.preventDefault(); cycleFontScale(); }
       if (e.key === 'ArrowRight') { e.preventDefault(); goToNextFragment(); }
       if (e.key === 'ArrowLeft') { e.preventDefault(); goToPrevFragment(); }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [togglePlayPause, toggleMute, toggleAmbient, toggleFocusMode, handleCopy, goToNextFragment, goToPrevFragment, showRecorder]);
+  }, [togglePlayPause, toggleMute, toggleAmbient, toggleFocusMode, handleCopy, cycleFontScale, goToNextFragment, goToPrevFragment, showRecorder]);
 
   useEffect(() => {
     return () => { cleanupResonator(); };
@@ -550,46 +523,44 @@ export default function App() {
       </header>
 
       <aside 
-        className={`fixed md:static inset-y-0 left-0 z-40 w-72 glass-panel border-r border-[var(--color-monastery-accent)]/10 flex flex-col transition-all duration-700 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} ${focusMode ? 'md:-translate-x-full md:opacity-0 pointer-events-none' : 'opacity-100'} pt-14 md:pt-0 giant-wheel-sidebar`}
+        className={`fixed md:static inset-y-0 left-0 z-40 w-[min(100vw,20rem)] md:w-80 glass-panel border-r border-[var(--color-monastery-accent)]/10 flex flex-col transition-all duration-700 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} ${focusMode ? 'md:-translate-x-full md:opacity-0 pointer-events-none' : 'opacity-100'} pt-14 md:pt-0`}
       >
         <div className="hidden md:block p-6 text-center border-b border-white/5">
           <motion.h1 key={format(currentTime, 'HH:mm')} initial={{ opacity: 0.5 }} animate={{ opacity: 1 }} transition={{ duration: 1.5 }} className="font-serif text-4xl text-[var(--color-monastery-accent)]">{format(currentTime, 'HH:mm')}</motion.h1>
           <p className="text-xs uppercase tracking-[0.3em] opacity-60 mt-1">{format(currentTime, "EEEE, d 'de' MMMM", { locale: es })}</p>
         </div>
         
-        <div 
-          ref={sidepaneRef}
-          className="flex-1 overflow-y-auto custom-scrollbar flex flex-col min-h-0"
-        >
-          <div className="p-5 border-b border-white/5">
+        <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+          <div className="p-4 border-b border-white/5 shrink-0">
             <p className="text-[10px] uppercase tracking-widest opacity-50 mb-2 flex items-center gap-1.5"><Clock size={10} /> Hora Actual</p>
             <AnimatePresence mode="wait">
               <motion.div key={currentHour?.name || 'empty'} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1.2 }}>
-                <h2 className="font-serif text-2xl text-[var(--color-monastery-accent)]">{currentHour?.name || '...'}</h2>
+                <h2 className="font-serif text-xl text-[var(--color-monastery-accent)]">{currentHour?.name || '...'}</h2>
                 <p className="text-xs opacity-70 mt-0.5">{currentHour?.description}</p>
                 <p className="font-mono text-xs opacity-50 mt-1">{currentHour?.timeString}</p>
               </motion.div>
             </AnimatePresence>
-          </div>
-          <div className="p-5 border-b border-white/5 opacity-70">
-            <p className="text-[10px] uppercase tracking-widest opacity-50 mb-2">Próxima Hora</p>
-            <AnimatePresence mode="wait">
-              <motion.div key={nextHour?.name || 'empty'} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1.2 }}>
-                <h2 className="font-serif text-xl">{nextHour?.name || '...'}</h2>
-                <p className="font-mono text-xs opacity-50 mt-1">{nextHour?.timeString}</p>
-              </motion.div>
-            </AnimatePresence>
+            <p className="text-[10px] uppercase tracking-widest opacity-50 mt-3 mb-1">Próxima Hora</p>
+            <p className="font-serif text-sm">{nextHour?.name || '...'} <span className="font-mono opacity-50 text-xs">{nextHour?.timeString}</span></p>
           </div>
 
-          <div className="flex-1 flex flex-col min-h-[400px]">
-            <p className="text-[10px] uppercase tracking-widest opacity-50 px-5 mt-5">Ritmo Diario</p>
-            <Chronogram currentTime={currentTime} currentHour={currentHour} />
+          <DayPlaylistSidebar currentTime={currentTime} currentHour={currentHour} />
+
+          <div className="h-28 shrink-0 overflow-hidden border-t border-white/5">
+            <p className="text-[9px] uppercase tracking-widest opacity-40 px-4 pt-2">Rueda del día · Ángelus 6·12·18</p>
+            <Chronogram currentTime={currentTime} currentHour={currentHour} compact />
           </div>
-          
-          <div className="h-32" />
         </div>
 
-        <div className="p-4 border-t border-white/5 flex flex-col items-center gap-2 opacity-40 hover:opacity-100 transition-opacity duration-500">
+        <div className="p-4 border-t border-white/5 flex flex-col items-center gap-2 opacity-40 hover:opacity-100 transition-opacity duration-500 shrink-0">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); cycleFontScale(); }}
+            className="text-[9px] uppercase tracking-[0.2em] border border-white/10 px-3 py-1.5 rounded hover:bg-white/5 min-h-0 min-w-0"
+            title="Tamaño de letra (F)"
+          >
+            Letra: {fontScale === 'sm' ? 'pequeña' : fontScale === 'md' ? 'media' : 'grande'}
+          </button>
           <p className="text-[10px] uppercase tracking-widest flex items-center justify-center gap-2">
             <a href="https://gatrivi.com" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-monastery-accent)] transition-colors">Gatrivi</a>
             <span className="opacity-50">|</span>
@@ -597,7 +568,7 @@ export default function App() {
           </p>
           <button 
             onClick={rechargeChapel}
-            className="text-[9px] uppercase tracking-[0.2em] border border-white/10 px-2 py-1 rounded hover:bg-white/5 hover:border-white/30 transition-all cursor-pointer"
+            className="text-[9px] uppercase tracking-[0.2em] border border-white/10 px-2 py-1 rounded hover:bg-white/5 hover:border-white/30 transition-all cursor-pointer min-h-0 min-w-0"
           >
             Recargar Capilla
           </button>
@@ -606,10 +577,10 @@ export default function App() {
 
       {sidebarOpen && <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />}
 
-      <main className="flex-1 flex flex-col relative min-w-0 pt-14 md:pt-0 mask-fade-y" onTouchStart={(e) => { touchStartX.current = e.changedTouches[0].screenX; }} onTouchEnd={(e) => { if (touchStartX.current == null) return; const diff = touchStartX.current - e.changedTouches[0].screenX; if (Math.abs(diff) > 50) { if (diff > 0) goToNextFragment(); else goToPrevFragment(); } touchStartX.current = null; }}>
+      <main className="flex-1 flex flex-col relative min-w-0 pt-14 md:pt-0 prayer-main-view" onTouchStart={(e) => { touchStartX.current = e.changedTouches[0].screenX; }} onTouchEnd={(e) => { if (touchStartX.current == null) return; const diff = touchStartX.current - e.changedTouches[0].screenX; if (Math.abs(diff) > 50) { if (diff > 0) goToNextFragment(); else goToPrevFragment(); } touchStartX.current = null; }}>
         <div 
           ref={prayerTextRef}
-          className="flex-1 overflow-hidden flex flex-col items-center p-6 md:p-12 lg:p-20 relative"
+          className="flex-1 overflow-hidden flex flex-col items-center px-4 py-4 md:px-8 md:py-6 relative min-h-0"
         >
           <div className="sacred-frame" />
           
@@ -634,9 +605,14 @@ export default function App() {
             )}
           </AnimatePresence>
 
-          <div className="w-full max-w-3xl h-full relative group">
-            <div className="absolute top-8 right-8 opacity-20 pointer-events-none rose-container">
-              <SacredDrawing symbolKey="cross" progress={isPlaying ? 0.8 : 0.3} size={80} />
+          <div className="w-full max-w-4xl h-full relative group flex flex-col min-h-0">
+            {!focusMode && (
+              <div className="shrink-0 mb-2 z-10">
+                <PrayerTimingBar currentTime={currentTime} slotIndexOverride={manualSlotIndex} />
+              </div>
+            )}
+            <div className="absolute top-2 right-2 opacity-15 pointer-events-none rose-container hidden md:block">
+              <SacredDrawing symbolKey="cross" progress={isPlaying ? 0.8 : 0.3} size={56} />
             </div>
 
             {fragment && (
@@ -677,28 +653,24 @@ export default function App() {
                 >
                   <span className="text-3xl font-serif">›</span>
                 </button>
-                <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-3 opacity-30 group-hover:opacity-60 transition-opacity">
-                  {FRAGMENTS_BY_HOUR[currentHour.name]?.map((_, i) => (
-                    <div
-                      key={i}
-                      className={`h-1 rounded-full transition-all duration-500 ${i === fragmentIndex ? 'w-6 bg-[var(--color-monastery-accent)]' : 'w-2 bg-white/30'}`}
-                    />
-                  ))}
-                </div>
               </>
             )}
 
             <AnimatePresence mode="wait">
               {fragment ? (
                 <motion.div
-                  key={`${currentHour?.name}-${fragment.title}-${fragmentIndex}`}
+                  key={`${activeSlotIndex}-${fragment.title}`}
                   initial={{ opacity: 0, scale: 0.98 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 1.02 }}
                   transition={{ duration: 0.8, ease: [0.4, 0, 0.2, 1] }}
-                  className="h-full w-full"
+                  className="flex-1 min-h-0 w-full"
                 >
-                  <AutoPager progress={readingProgress}>
+                  <AutoPager
+                    progress={readingProgress}
+                    title={fragment.title}
+                    subtitle={fragment.subtitle}
+                  >
                     {fragment.text}
                   </AutoPager>
                 </motion.div>

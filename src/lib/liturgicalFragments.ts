@@ -1,4 +1,5 @@
 import { HourName } from './hours';
+import { getDayPosition } from './liturgicalDay';
 
 export interface LiturgicalFragment {
   title: string;
@@ -6,7 +7,7 @@ export interface LiturgicalFragment {
   text: string;
 }
 
-// Rotate every 3 minutes so a user sees ~5 fragments per hour
+/** @deprecated Day rotation is driven by {@link ../lib/liturgicalDay.ts} (24 h cycle). */
 export const ROTATION_MINUTES = 3;
 
 export const FRAGMENTS_BY_HOUR: Record<HourName, LiturgicalFragment[]> = {
@@ -623,12 +624,12 @@ Por Cristo nuestro Señor.
 };
 
 export function getFragmentForHour(hour: HourName, date: Date = new Date()): LiturgicalFragment {
+  const pos = getDayPosition(date);
+  if (pos.slot.groupKind === 'angelus') return pos.slot.fragment;
+  if (pos.slot.hour === hour) return pos.slot.fragment;
   const fragments = FRAGMENTS_BY_HOUR[hour];
   if (!fragments || fragments.length === 0) {
     return { title: 'Oración', text: '**Amén.**' };
   }
-  // Rotate every ROTATION_MINUTES based on minutes elapsed in the day
-  const minutesOfDay = date.getHours() * 60 + date.getMinutes();
-  const index = Math.floor(minutesOfDay / ROTATION_MINUTES) % fragments.length;
-  return fragments[index];
+  return fragments[0];
 }
