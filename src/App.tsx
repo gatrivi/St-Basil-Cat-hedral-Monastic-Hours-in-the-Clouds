@@ -20,7 +20,7 @@ import { getPrayerRecordingMetadata } from './services/recordings';
 
 // Declare the version injected by Vite
 declare const __APP_VERSION__: string;
-const VERSION = '1.3.3';
+const VERSION = '1.3.4';
 
 type FontScale = 'sm' | 'md' | 'lg';
 const FONT_SCALE_KEY = 'cathedral-font-scale'; 
@@ -456,7 +456,7 @@ export default function App() {
         </div>
         
         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-          <DayPlaylistSidebar currentTime={currentTime} currentHour={currentHour} />
+          <DayPlaylistSidebar currentTime={currentTime} />
         </div>
 
         <div className="p-4 border-t border-white/10 flex flex-col items-stretch gap-3 shrink-0 sidebar-footer">

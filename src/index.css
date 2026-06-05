@@ -136,105 +136,72 @@ html[data-font-scale='lg'] {
   display: none;
 }
 
-/* ─── TV-friendly sidebar (readable from across the room) ─── */
 .sidebar-panel {
   background: rgba(12, 8, 5, 0.92);
 }
 
-.sidebar-label {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.2em;
-  opacity: 0.65;
-  margin-bottom: 0.5rem;
-}
-
-.sidebar-now-title {
-  font-family: var(--font-serif);
-  font-size: clamp(1.35rem, 2vw, 1.75rem);
-  line-height: 1.2;
-  color: var(--color-monastery-accent);
-  font-weight: 600;
-}
-
-.sidebar-now-sub {
-  font-size: 1rem;
-  opacity: 0.75;
-  margin-top: 0.25rem;
-}
-
-.sidebar-next-line {
-  font-size: clamp(0.95rem, 1.4vw, 1.15rem);
-  margin-top: 0.75rem;
-  opacity: 0.9;
-  line-height: 1.35;
-}
-
-.sidebar-next-line strong {
-  color: var(--color-monastery-text);
-  font-weight: 600;
-}
-
-.sidebar-next-when {
-  color: var(--color-monastery-accent);
-  font-weight: 500;
-}
-
-.sidebar-nearby-list,
-.sidebar-groups-list {
+/* Vertical wheel: current + next group titles share the sidebar height */
+.sidebar-wheel-list {
   list-style: none;
-  padding: 0;
   margin: 0;
-  font-family: var(--font-serif);
-  font-size: clamp(1rem, 1.5vw, 1.2rem);
-  line-height: 1.45;
+  padding: 0.25rem 0;
 }
 
-.sidebar-nearby-list li,
-.sidebar-groups-list li {
-  padding: 0.35rem 0;
-  opacity: 0.55;
+.sidebar-wheel-item {
+  padding: 0 0.5rem;
+  opacity: 0.4;
+  transition: opacity 0.5s ease;
 }
 
-.sidebar-nearby-list li.is-now,
-.sidebar-groups-list li.is-now {
+.sidebar-wheel-item.is-active {
   opacity: 1;
+}
+
+.sidebar-wheel-item.is-active .sidebar-wheel-title {
   color: var(--color-monastery-accent);
+  font-size: clamp(1.15rem, calc(78vh / var(--wheel-rows, 12)), 1.65rem);
   font-weight: 600;
 }
 
-.sidebar-rhythm-time {
-  font-family: ui-monospace, monospace;
-  font-size: clamp(0.9rem, 1.2vw, 1.05rem);
-  opacity: 0.7;
-  min-width: 3.5rem;
-  display: inline-block;
+.sidebar-wheel-item.is-next-group {
+  opacity: 0.35;
 }
 
-.sidebar-rhythm-name {
+.sidebar-wheel-item.is-next-group.is-active {
+  opacity: 0.85;
+}
+
+.sidebar-wheel-title {
   font-family: var(--font-serif);
-  font-size: clamp(1rem, 1.4vw, 1.2rem);
+  font-size: clamp(0.85rem, calc(72vh / var(--wheel-rows, 12)), 1.25rem);
+  line-height: 1.2;
+  text-align: center;
 }
 
-.sidebar-rhythm-row {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  padding: 0.4rem 0.5rem;
-  border-radius: 4px;
-  opacity: 0.5;
+.sidebar-wheel-divider {
+  display: block;
+  width: 40%;
+  height: 1px;
+  background: var(--color-monastery-accent);
+  opacity: 0.35;
+  margin: 0.25rem auto 0.5rem;
 }
 
-.sidebar-rhythm-row.is-current {
-  opacity: 1;
-  background: rgba(212, 175, 55, 0.12);
-  border-left: 3px solid var(--color-monastery-accent);
-  padding-left: 0.65rem;
-}
-
-.sidebar-angelus-tag {
+.sidebar-wheel-group-label {
+  font-family: var(--font-serif);
+  font-size: clamp(1.1rem, 1.8vw, 1.45rem);
   color: var(--color-monastery-accent);
-  font-weight: 600;
+}
+
+.sidebar-wheel-group-next,
+.sidebar-wheel-eta {
+  font-size: clamp(0.85rem, 1.2vw, 1rem);
+  margin-top: 0.35rem;
+}
+
+.sidebar-wheel-eta {
+  color: var(--color-monastery-accent);
+  opacity: 0.85;
 }
 
 .sidebar-footer-btn {

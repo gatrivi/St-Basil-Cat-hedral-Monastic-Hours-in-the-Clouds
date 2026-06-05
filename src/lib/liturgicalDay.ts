@@ -181,8 +181,36 @@ export function getDayPosition(now: Date = new Date()): DayPosition {
   };
 }
 
-/** Upcoming groups from the current group onward (wraps at end of day). */
-/** A short window of prayer titles around the current slot (for TV sidebar). */
+function slotsForGroup(group: PrayerGroup): PrayerSlot[] {
+  if (group.kind === 'angelus') {
+    return DAY_SLOTS.filter(s => s.groupKind === 'angelus' && s.anchorTime === group.timeString);
+  }
+  return DAY_SLOTS.filter(s => s.groupKind === 'hour' && s.hour === group.hour);
+}
+
+/** Titles for current + next liturgical group (fits one sidebar screen). */
+export function getSidebarWheel(now: Date = new Date()) {
+  const pos = getDayPosition(now);
+  const currentGroup = DAY_GROUPS[pos.groupIndex];
+  const nextGroup = DAY_GROUPS[(pos.groupIndex + 1) % DAY_GROUPS.length];
+  const currentSlots = slotsForGroup(currentGroup);
+  const nextSlots = slotsForGroup(nextGroup);
+  const items = [
+    ...currentSlots.map(slot => ({ slot, group: currentGroup, isNextGroup: false })),
+    ...nextSlots.map(slot => ({ slot, group: nextGroup, isNextGroup: true })),
+  ];
+  const activeIndex = Math.max(0, items.findIndex(it => it.slot.id === pos.slot.id));
+  return {
+    currentGroup,
+    nextGroup,
+    items,
+    activeIndex,
+    slotProgress: pos.slotProgress,
+    msUntilNext: pos.msUntilNext,
+    nextTitle: pos.nextSlot?.title,
+  };
+}
+
 export function getNearbySlots(now: Date = new Date(), before = 0, after = 2): PrayerSlot[] {
   const { slotIndex } = getDayPosition(now);
   const n = DAY_SLOTS.length;
