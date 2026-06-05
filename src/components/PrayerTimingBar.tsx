@@ -15,13 +15,13 @@ export function PrayerTimingBar({ currentTime, slotIndexOverride }: PrayerTiming
 
   return (
     <div className="prayer-timing-bar w-full max-w-3xl mx-auto px-2">
-      <div className="flex items-center justify-between gap-3 mb-2 text-[10px] uppercase tracking-widest opacity-60">
-        <span className="truncate font-serif text-sm normal-case tracking-normal opacity-90">
+      <div className="prayer-timing-meta flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-2 opacity-80">
+        <span className="hidden sm:inline font-serif text-sm truncate">
           {slot.title}
           {slot.subtitle ? ` · ${slot.subtitle}` : ''}
         </span>
         {nextSlot && (
-          <span className="shrink-0 text-right">
+          <span className="text-xs sm:text-sm uppercase tracking-wider sm:normal-case sm:tracking-normal text-center sm:text-right">
             Siguiente: <span className="text-[var(--color-monastery-accent)]">{nextSlot.title}</span>
             {' · '}
             {formatMinutesUntil(msUntilNext)}

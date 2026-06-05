@@ -35,7 +35,16 @@ export const AutoPager: React.FC<AutoPagerProps> = ({ children, progress, title,
   const [contentHeight, setContentHeight] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
 
-  const radius = 4000; // Adjusted for a slightly different curve
+  const radius = 4000;
+  const [simpleScroll, setSimpleScroll] = useState(false);
+
+  useLayoutEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const update = () => setSimpleScroll(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
 
   useLayoutEffect(() => {
     const updateHeights = () => {
@@ -83,9 +92,10 @@ export const AutoPager: React.FC<AutoPagerProps> = ({ children, progress, title,
   }, [progress, children]);
 
   // Calculate rotation and translation to keep the "current line" at roughly the same vertical spot
-  const rotationAngle = (contentHeight * progress) / radius * (180 / Math.PI);
-  // Keep the text scrolling naturally based on progress, without massive artificial offsets
-  const translateY = -progress * contentHeight;
+  const rotationAngle = simpleScroll
+    ? 0
+    : (contentHeight * progress) / radius * (180 / Math.PI);
+  const translateY = -progress * Math.max(0, contentHeight - containerHeight * 0.2);
 
   return (
     <div ref={containerRef} className="relative overflow-hidden w-full h-full flex flex-col items-center justify-start pt-2 md:pt-4 prayer-text-scroll">

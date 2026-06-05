@@ -7,6 +7,7 @@ import Markdown from 'react-markdown';
 import { getCurrentAndNextHour, LiturgicalHour, HourName } from './lib/hours';
 import { LiturgicalFragment } from './lib/liturgicalFragments';
 import { DAY_SLOTS, getDayPosition } from './lib/liturgicalDay';
+import { APP_NAME, APP_TAGLINE } from './lib/brand';
 import { DayPlaylistSidebar } from './components/DayPlaylistSidebar';
 import { PrayerTimingBar } from './components/PrayerTimingBar';
 import { useBackground } from './lib/backgrounds';
@@ -20,7 +21,7 @@ import { getPrayerRecordingMetadata } from './services/recordings';
 
 // Declare the version injected by Vite
 declare const __APP_VERSION__: string;
-const VERSION = '1.3.4';
+const VERSION = '1.3.5';
 
 type FontScale = 'sm' | 'md' | 'lg';
 const FONT_SCALE_KEY = 'cathedral-font-scale'; 
@@ -430,21 +431,33 @@ export default function App() {
       <audio ref={bellRef} src={BELL_SOUND_URL} preload="auto" />
       <audio ref={audioRef} onEnded={() => { setIsPlaying(false); }} onPause={() => setIsPlaying(false)} onPlay={() => setIsPlaying(true)} onTimeUpdate={(e) => { const audio = e.currentTarget; if (audio.duration) { setAudioProgress(audio.currentTime); setAudioDuration(audio.duration); } }} onLoadedMetadata={(e) => setAudioDuration(e.currentTarget.duration || 0)} />
 
-      <header className={`md:hidden fixed top-0 left-0 right-0 z-40 glass-panel border-b border-[var(--color-monastery-accent)]/10 h-14 flex items-center justify-between px-4 transition-all duration-700 ${focusMode ? 'opacity-0 pointer-events-none -translate-y-full' : 'opacity-100'}`}>
-        <button onClick={(e) => { e.stopPropagation(); setSidebarOpen(!sidebarOpen); }} className="p-2 opacity-60 hover:opacity-100 transition-opacity">
-          {sidebarOpen ? <X size={18} /> : <Menu size={18} />}
+      <header className={`md:hidden fixed top-0 left-0 right-0 z-40 glass-panel border-b border-[var(--color-monastery-accent)]/10 min-h-14 flex items-center justify-between px-3 gap-2 transition-all duration-700 ${focusMode ? 'opacity-0 pointer-events-none -translate-y-full' : 'opacity-100'}`}>
+        <button onClick={(e) => { e.stopPropagation(); setSidebarOpen(!sidebarOpen); }} className="p-2 opacity-80 hover:opacity-100 transition-opacity shrink-0" aria-label="Menú">
+          {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
         </button>
-        <div className="text-center">
-          <p className="font-serif text-lg text-[var(--color-monastery-accent)] leading-none">{currentHour?.name || '...'}</p>
-          <p className="text-[10px] uppercase tracking-widest opacity-50">{format(currentTime, 'HH:mm')}</p>
+        <div className="flex items-center gap-2 min-w-0 flex-1 justify-center">
+          <img src="/icons/icon.svg" alt="" className="w-9 h-9 shrink-0 rounded-md" width={36} height={36} />
+          <div className="text-center min-w-0">
+            <p className="font-serif text-base text-[var(--color-monastery-accent)] leading-tight truncate">{APP_NAME}</p>
+            <p className="text-[10px] uppercase tracking-wider opacity-60 truncate">
+              {currentHour?.name || APP_TAGLINE} · {format(currentTime, 'HH:mm')}
+            </p>
+          </div>
         </div>
-        <div className="w-8" />
+        <div className="w-10 shrink-0" aria-hidden />
       </header>
 
       <aside 
         className={`sidebar-panel fixed md:static inset-y-0 left-0 z-40 w-[min(100vw,22rem)] md:w-[min(28vw,22rem)] glass-panel border-r border-[var(--color-monastery-accent)]/10 flex flex-col transition-all duration-700 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} ${focusMode ? 'md:-translate-x-full md:opacity-0 pointer-events-none' : 'opacity-100'} pt-14 md:pt-0`}
       >
         <div className="hidden md:block p-5 text-center border-b border-white/10 shrink-0 sidebar-clock">
+          <div className="flex items-center justify-center gap-3 mb-3">
+            <img src="/icons/icon.svg" alt="" className="w-12 h-12 rounded-lg" width={48} height={48} />
+            <div className="text-left">
+              <p className="font-serif text-2xl text-[var(--color-monastery-accent)] leading-none">{APP_NAME}</p>
+              <p className="text-xs uppercase tracking-widest opacity-60">{APP_TAGLINE}</p>
+            </div>
+          </div>
           <motion.h1 key={format(currentTime, 'HH:mm')} initial={{ opacity: 0.5 }} animate={{ opacity: 1 }} transition={{ duration: 1.5 }} className="font-serif text-5xl text-[var(--color-monastery-accent)] leading-none">{format(currentTime, 'HH:mm')}</motion.h1>
           <p className="text-sm uppercase tracking-[0.2em] opacity-80 mt-2">{format(currentTime, "EEEE, d 'de' MMMM", { locale: es })}</p>
           {currentHour && (

@@ -97,6 +97,7 @@ body {
 
 /* Prayer viewport: more readable area, less aggressive fade */
 .prayer-main-view {
+  overflow-x: hidden;
   mask-image: linear-gradient(
     to bottom,
     transparent 0%,
