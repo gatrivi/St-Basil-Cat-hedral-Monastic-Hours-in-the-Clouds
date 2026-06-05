@@ -114,6 +114,22 @@ body {
   );
 }
 
+@media (max-width: 767px) {
+  .prayer-text-scroll {
+    overflow-x: hidden;
+    max-width: 100%;
+  }
+
+  .prayer-markdown-body {
+    overflow-wrap: anywhere;
+  }
+
+  .sacred-frame {
+    inset: 4px;
+    opacity: 0.35;
+  }
+}
+
 /* Font scale for vision accessibility */
 html[data-font-scale='sm'] {
   --prayer-text-scale: 0.88;
