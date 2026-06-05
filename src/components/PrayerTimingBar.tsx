@@ -37,10 +37,6 @@ export function PrayerTimingBar({ currentTime, slotIndexOverride }: PrayerTiming
         />
       </div>
 
-      <p className="text-[9px] text-center opacity-35 italic">
-        Ritmo: {DAY_SLOTS.length} rezos repartidos en 24 h (~
-        {Math.round((24 * 60) / DAY_SLOTS.length)} min cada uno)
-      </p>
     </div>
   );
 }

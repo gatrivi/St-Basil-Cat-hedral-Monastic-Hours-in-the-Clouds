@@ -1,12 +1,12 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Bell, Play, Pause, Volume2, VolumeX, Clock, AlertCircle, Copy, Check, Menu, X, Mic, Waves, Sun, Moon, Sunrise, Sunset, Eye, EyeOff } from 'lucide-react';
+import { Bell, Play, Pause, Volume2, VolumeX, AlertCircle, Copy, Check, Menu, X, Mic, Waves, Eye, EyeOff } from 'lucide-react';
 import { format, isAfter, parse } from 'date-fns';
 import { es } from 'date-fns/locale';
 import Markdown from 'react-markdown';
-import { getCurrentAndNextHour, HOURS_SCHEDULE, LiturgicalHour, HourName } from './lib/hours';
+import { getCurrentAndNextHour, LiturgicalHour, HourName } from './lib/hours';
 import { LiturgicalFragment } from './lib/liturgicalFragments';
-import { DAY_SLOTS, getDayPosition, isAngelusHour } from './lib/liturgicalDay';
+import { DAY_SLOTS, getDayPosition } from './lib/liturgicalDay';
 import { DayPlaylistSidebar } from './components/DayPlaylistSidebar';
 import { PrayerTimingBar } from './components/PrayerTimingBar';
 import { useBackground } from './lib/backgrounds';
@@ -20,7 +20,7 @@ import { getPrayerRecordingMetadata } from './services/recordings';
 
 // Declare the version injected by Vite
 declare const __APP_VERSION__: string;
-const VERSION = '1.3.2';
+const VERSION = '1.3.3';
 
 type FontScale = 'sm' | 'md' | 'lg';
 const FONT_SCALE_KEY = 'cathedral-font-scale'; 
@@ -146,88 +146,6 @@ function BackgroundLayers({ currentHour }: { currentHour: LiturgicalHour | null 
         }}
       />
       <div className="absolute inset-0 backdrop-blur-[6px]" />
-    </div>
-  );
-}
-
-function Chronogram({ currentTime, currentHour, compact = false }: { currentTime: Date, currentHour: LiturgicalHour | null, compact?: boolean }) {
-  const radius = compact ? 1200 : 2200;
-  const [offsetAngle, setOffsetAngle] = useState(0);
-  const snapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const totalMinutes = currentTime.getHours() * 60 + currentTime.getMinutes() + currentTime.getSeconds() / 60;
-  const dayProgress = totalMinutes / (24 * 60);
-  
-  const baseAngle = dayProgress * 360;
-
-  const handleWheel = (e: React.WheelEvent) => {
-    setOffsetAngle(prev => prev + e.deltaY * 0.05);
-    
-    if (snapTimer.current) clearTimeout(snapTimer.current);
-    snapTimer.current = setTimeout(() => {
-      setOffsetAngle(0);
-    }, 2000);
-  };
-
-  return (
-    <div 
-      className={`relative overflow-hidden cursor-ns-resize ${compact ? 'h-full mt-0' : 'flex-1 mt-4 mb-4'}`}
-      onWheel={handleWheel}
-    >
-      <div 
-        className="absolute left-0 top-1/2 w-full transition-transform duration-500 ease-out"
-        style={{ 
-          transform: `rotate(${-(baseAngle + offsetAngle)}deg)`, 
-          transformOrigin: `${radius}px 0px`,
-          height: '0px'
-        }}
-      >
-        {Array.from({ length: 24 }).map((_, h) => {
-          const angle = (h / 24) * 360;
-          const isLiturgical = HOURS_SCHEDULE.find(sh => parseInt(sh.timeString.split(':')[0]) === h);
-          const isAngelus = isAngelusHour(h);
-          const isCurrent = currentHour && parseInt(currentHour.timeString.split(':')[0]) === h;
-          
-          return (
-            <div 
-              key={h}
-              className="absolute whitespace-nowrap"
-              style={{
-                transform: `rotate(${-angle}deg) translateX(-${radius - 40}px) rotate(${angle}deg)`,
-                transformOrigin: '0 0',
-                left: '0',
-                top: '0',
-                opacity: Math.abs(((angle - (baseAngle + offsetAngle) + 360) % 360) - 180) > 160 ? 1 : 0.15,
-                transition: 'opacity 0.5s'
-              }}
-            >
-              <div className={`flex flex-col items-start gap-0.5 px-6 py-2 transition-all ${isCurrent ? 'scale-110' : 'scale-100'}`}>
-                <div className="flex items-center gap-4">
-                  <div className={`w-8 h-[1px] ${isLiturgical || isAngelus ? 'bg-[var(--color-monastery-accent)]' : 'bg-white/20'}`} />
-                  <span className={`font-mono text-[10px] ${isLiturgical || isAngelus ? 'text-[var(--color-monastery-accent)] font-bold' : 'opacity-50'}`}>
-                    {h.toString().padStart(2, '0')}:00
-                  </span>
-                  {isLiturgical && (
-                    <span className={`font-serif text-sm transition-colors ${isCurrent ? 'text-[var(--color-monastery-accent)]' : 'opacity-80'}`}>
-                      {isLiturgical.name}
-                    </span>
-                  )}
-                </div>
-                {isAngelus && (
-                  <span className="font-serif text-[11px] text-[var(--color-monastery-accent)] opacity-90 ml-12 pl-1">
-                    Ángelus
-                  </span>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      
-      <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-[1px] bg-[var(--color-monastery-accent)]/20 pointer-events-none" />
-      {Math.abs(offsetAngle) > 1 && (
-        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[8px] uppercase tracking-widest opacity-40 animate-pulse">Explorando...</div>
-      )}
     </div>
   );
 }
@@ -524,52 +442,40 @@ export default function App() {
       </header>
 
       <aside 
-        className={`fixed md:static inset-y-0 left-0 z-40 w-[min(100vw,20rem)] md:w-80 glass-panel border-r border-[var(--color-monastery-accent)]/10 flex flex-col transition-all duration-700 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} ${focusMode ? 'md:-translate-x-full md:opacity-0 pointer-events-none' : 'opacity-100'} pt-14 md:pt-0`}
+        className={`sidebar-panel fixed md:static inset-y-0 left-0 z-40 w-[min(100vw,22rem)] md:w-[min(28vw,22rem)] glass-panel border-r border-[var(--color-monastery-accent)]/10 flex flex-col transition-all duration-700 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} ${focusMode ? 'md:-translate-x-full md:opacity-0 pointer-events-none' : 'opacity-100'} pt-14 md:pt-0`}
       >
-        <div className="hidden md:block p-6 text-center border-b border-white/5">
-          <motion.h1 key={format(currentTime, 'HH:mm')} initial={{ opacity: 0.5 }} animate={{ opacity: 1 }} transition={{ duration: 1.5 }} className="font-serif text-4xl text-[var(--color-monastery-accent)]">{format(currentTime, 'HH:mm')}</motion.h1>
-          <p className="text-xs uppercase tracking-[0.3em] opacity-60 mt-1">{format(currentTime, "EEEE, d 'de' MMMM", { locale: es })}</p>
+        <div className="hidden md:block p-5 text-center border-b border-white/10 shrink-0 sidebar-clock">
+          <motion.h1 key={format(currentTime, 'HH:mm')} initial={{ opacity: 0.5 }} animate={{ opacity: 1 }} transition={{ duration: 1.5 }} className="font-serif text-5xl text-[var(--color-monastery-accent)] leading-none">{format(currentTime, 'HH:mm')}</motion.h1>
+          <p className="text-sm uppercase tracking-[0.2em] opacity-80 mt-2">{format(currentTime, "EEEE, d 'de' MMMM", { locale: es })}</p>
+          {currentHour && (
+            <p className="font-serif text-xl mt-3 text-[var(--color-monastery-accent)]">
+              {currentHour.name}
+              <span className="block text-sm opacity-70 font-sans mt-1">Próxima: {nextHour?.name} · {nextHour?.timeString}</span>
+            </p>
+          )}
         </div>
         
         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-          <div className="p-4 border-b border-white/5 shrink-0">
-            <p className="text-[10px] uppercase tracking-widest opacity-50 mb-2 flex items-center gap-1.5"><Clock size={10} /> Hora Actual</p>
-            <AnimatePresence mode="wait">
-              <motion.div key={currentHour?.name || 'empty'} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1.2 }}>
-                <h2 className="font-serif text-xl text-[var(--color-monastery-accent)]">{currentHour?.name || '...'}</h2>
-                <p className="text-xs opacity-70 mt-0.5">{currentHour?.description}</p>
-                <p className="font-mono text-xs opacity-50 mt-1">{currentHour?.timeString}</p>
-              </motion.div>
-            </AnimatePresence>
-            <p className="text-[10px] uppercase tracking-widest opacity-50 mt-3 mb-1">Próxima Hora</p>
-            <p className="font-serif text-sm">{nextHour?.name || '...'} <span className="font-mono opacity-50 text-xs">{nextHour?.timeString}</span></p>
-          </div>
-
           <DayPlaylistSidebar currentTime={currentTime} currentHour={currentHour} />
-
-          <div className="h-28 shrink-0 overflow-hidden border-t border-white/5">
-            <p className="text-[9px] uppercase tracking-widest opacity-40 px-4 pt-2">Rueda del día · Ángelus 6·12·18</p>
-            <Chronogram currentTime={currentTime} currentHour={currentHour} compact />
-          </div>
         </div>
 
-        <div className="p-4 border-t border-white/5 flex flex-col items-center gap-2 opacity-40 hover:opacity-100 transition-opacity duration-500 shrink-0">
+        <div className="p-4 border-t border-white/10 flex flex-col items-stretch gap-3 shrink-0 sidebar-footer">
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); cycleFontScale(); }}
-            className="text-[9px] uppercase tracking-[0.2em] border border-white/10 px-3 py-1.5 rounded hover:bg-white/5 min-h-0 min-w-0"
+            className="sidebar-footer-btn"
             title="Tamaño de letra (F)"
           >
             Letra: {fontScale === 'sm' ? 'pequeña' : fontScale === 'md' ? 'media' : 'grande'}
           </button>
-          <p className="text-[10px] uppercase tracking-widest flex items-center justify-center gap-2">
+          <p className="text-sm uppercase tracking-widest text-center opacity-70 flex items-center justify-center gap-2">
             <a href="https://gatrivi.com" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-monastery-accent)] transition-colors">Gatrivi</a>
             <span className="opacity-50">|</span>
-            <span className="opacity-50">v{VERSION}</span>
+            <span>v{VERSION}</span>
           </p>
           <button 
             onClick={rechargeChapel}
-            className="text-[9px] uppercase tracking-[0.2em] border border-white/10 px-2 py-1 rounded hover:bg-white/5 hover:border-white/30 transition-all cursor-pointer min-h-0 min-w-0"
+            className="sidebar-footer-btn"
           >
             Recargar Capilla
           </button>

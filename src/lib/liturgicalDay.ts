@@ -182,6 +182,18 @@ export function getDayPosition(now: Date = new Date()): DayPosition {
 }
 
 /** Upcoming groups from the current group onward (wraps at end of day). */
+/** A short window of prayer titles around the current slot (for TV sidebar). */
+export function getNearbySlots(now: Date = new Date(), before = 0, after = 2): PrayerSlot[] {
+  const { slotIndex } = getDayPosition(now);
+  const n = DAY_SLOTS.length;
+  const result: PrayerSlot[] = [];
+  for (let i = -before; i <= after; i++) {
+    const idx = (slotIndex + i + n) % n;
+    result.push(DAY_SLOTS[idx]);
+  }
+  return result;
+}
+
 export function getUpcomingGroups(now: Date = new Date(), count = 4): PrayerGroup[] {
   const { groupIndex } = getDayPosition(now);
   const result: PrayerGroup[] = [];
