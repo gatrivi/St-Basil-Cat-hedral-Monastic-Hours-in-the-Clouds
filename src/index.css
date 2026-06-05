@@ -157,51 +157,101 @@ html[data-font-scale='lg'] {
   background: rgba(12, 8, 5, 0.92);
 }
 
-/* Vertical wheel: current + next group titles share the sidebar height */
-.sidebar-wheel-list {
-  list-style: none;
-  margin: 0;
-  padding: 0.25rem 0;
+/* Split-flap / departure-board ticker (vertical, face-on) */
+.ticker-viewport {
+  position: relative;
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
 }
 
-.sidebar-wheel-item {
+.ticker-viewport::before,
+.ticker-viewport::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 28%;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.ticker-viewport::before {
+  top: 0;
+  background: linear-gradient(to bottom, rgba(12, 8, 5, 0.98), transparent);
+}
+
+.ticker-viewport::after {
+  bottom: 0;
+  background: linear-gradient(to top, rgba(12, 8, 5, 0.98), transparent);
+}
+
+.ticker-slot {
+  position: absolute;
+  top: 50%;
+  left: 0.5rem;
+  right: 0.5rem;
+  height: 52px;
+  transform: translateY(-50%);
+  border-top: 1px solid rgba(212, 175, 55, 0.45);
+  border-bottom: 1px solid rgba(212, 175, 55, 0.45);
+  background: rgba(212, 175, 55, 0.04);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.ticker-track {
+  will-change: transform;
+  transition: transform 0.35s linear;
+}
+
+.ticker-row {
+  height: 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   padding: 0 0.5rem;
-  opacity: 0.4;
-  transition: opacity 0.5s ease;
-}
-
-.sidebar-wheel-item.is-active {
-  opacity: 1;
-}
-
-.sidebar-wheel-item.is-active .sidebar-wheel-title {
-  color: var(--color-monastery-accent);
-  font-size: clamp(1.15rem, calc(78vh / var(--wheel-rows, 12)), 1.65rem);
-  font-weight: 600;
-}
-
-.sidebar-wheel-item.is-next-group {
   opacity: 0.35;
-}
-
-.sidebar-wheel-item.is-next-group.is-active {
-  opacity: 0.85;
-}
-
-.sidebar-wheel-title {
-  font-family: var(--font-serif);
-  font-size: clamp(0.85rem, calc(72vh / var(--wheel-rows, 12)), 1.25rem);
-  line-height: 1.2;
   text-align: center;
 }
 
-.sidebar-wheel-divider {
-  display: block;
-  width: 40%;
-  height: 1px;
-  background: var(--color-monastery-accent);
-  opacity: 0.35;
-  margin: 0.25rem auto 0.5rem;
+.ticker-row.is-active {
+  opacity: 1;
+}
+
+.ticker-row-label {
+  font-family: var(--font-serif);
+  font-size: clamp(0.95rem, 1.4vw, 1.2rem);
+  line-height: 1.15;
+  color: var(--color-monastery-text);
+}
+
+.ticker-row.is-active .ticker-row-label {
+  color: var(--color-monastery-accent);
+  font-weight: 600;
+  font-size: clamp(1.05rem, 1.6vw, 1.35rem);
+}
+
+.ticker-row-hint {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  opacity: 0.45;
+  margin-top: 0.15rem;
+}
+
+.ticker-viewport--prayer .ticker-slot {
+  left: 1rem;
+  right: 1rem;
+  height: auto;
+  min-height: 4rem;
+  top: 35%;
+  transform: translateY(-35%);
+}
+
+.ticker-track--prayer {
+  transition: transform 0.2s linear;
 }
 
 .sidebar-wheel-group-label {
