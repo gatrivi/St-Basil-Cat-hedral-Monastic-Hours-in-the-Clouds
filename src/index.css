@@ -30,8 +30,8 @@ body {
 }
 
 .glass-panel {
-  background: rgba(24, 18, 12, 0.75);
-  backdrop-filter: blur(25px);
+  background: rgba(24, 18, 12, 0.55);
+  backdrop-filter: blur(8px);
   border: 1px solid rgba(212, 175, 55, 0.15);
 }
 
@@ -76,7 +76,7 @@ body {
 /* TV Optimization: Ensure high contrast and larger click/focus targets */
 @media (min-width: 1920px) {
   .glass-panel {
-    background: rgba(20, 15, 10, 0.85);
+    background: rgba(20, 15, 10, 0.62);
   }
 }
 
@@ -162,7 +162,28 @@ html[data-font-scale='lg'] {
 }
 
 .sidebar-panel {
-  background: rgba(12, 8, 5, 0.92);
+  background: rgba(12, 8, 5, 0.62);
+}
+
+.sidebar-app-title {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  cursor: default;
+}
+
+.sidebar-version-on-hover {
+  opacity: 0;
+  transform: translateY(1px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  font-size: 0.85em;
+  color: rgba(232, 224, 216, 0.9);
+}
+
+.sidebar-app-title:hover .sidebar-version-on-hover {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 /* Split-flap / departure-board ticker (vertical, face-on) */
@@ -337,21 +358,19 @@ html[data-font-scale='lg'] {
 }
 
 .global-vignette {
-  position: fixed;
-  inset: 0;
-  z-index: 10;
-  pointer-events: none;
-  background: radial-gradient(
-    circle at center,
-    transparent 40%,
-    rgba(10, 5, 2, 0.4) 100%
-  );
+  display: none;
 }
 
-.playing .markdown-body {
-  text-shadow: 0 0 25px rgba(212, 175, 55, 0.15);
-  transition: text-shadow 2s ease;
+/* Toggle handle for the (hidden) transport bar */
+.transport-toggle {
+  position: fixed;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 55;
 }
+
+.playing .markdown-body { text-shadow: none; }
 
 /* Light Shafts (God Rays) */
 .light-shafts {
@@ -360,7 +379,7 @@ html[data-font-scale='lg'] {
   z-index: 1;
   pointer-events: none;
   overflow: hidden;
-  opacity: 0.4;
+  opacity: 0.15;
 }
 
 .light-shaft {
@@ -379,8 +398,8 @@ html[data-font-scale='lg'] {
     transparent 25%,
     transparent 40%
   );
-  opacity: 0.1;
-  filter: blur(40px);
+  opacity: 0.08;
+  filter: blur(30px);
   animation: sweep 25s ease-in-out infinite alternate;
 }
 

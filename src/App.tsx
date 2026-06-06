@@ -177,6 +177,7 @@ export default function App() {
   });
   const [hasRecording, setHasRecording] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
+  const [transportOpen, setTransportOpen] = useState(false);
   const [fontScale, setFontScale] = useState<FontScale>(() => {
     try {
       const v = localStorage.getItem(FONT_SCALE_KEY);
@@ -447,7 +448,6 @@ export default function App() {
   return (
     <div className={`h-screen flex overflow-hidden relative cursor-default ${focusMode ? 'focus-mode' : ''}`} onClick={() => { if (autoplayBlocked) handleManualStart(); }}>
       <BackgroundLayers currentHour={currentHour} />
-      <div className="global-vignette" />
       <IncenseTrail />
       <LightShafts />
       <DustMotes />
@@ -464,9 +464,12 @@ export default function App() {
           {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
         </button>
         <div className="flex items-center gap-2 min-w-0 flex-1 justify-center">
-          <img src="/icons/icon.svg" alt="" className="w-9 h-9 shrink-0 rounded-md" width={36} height={36} />
+          <img src="/icons/icon.svg" alt="" className="w-7 h-7 shrink-0 rounded-md" width={28} height={28} />
           <div className="text-center min-w-0">
-            <p className="font-serif text-base text-[var(--color-monastery-accent)] leading-tight truncate">{APP_NAME}</p>
+            <p className="font-serif text-sm text-[var(--color-monastery-accent)] leading-tight truncate sidebar-app-title">
+              {APP_NAME}
+              <span className="sidebar-version-on-hover">v{VERSION}</span>
+            </p>
             <p className="text-[10px] uppercase tracking-wider opacity-60 truncate">
               {currentHour?.name || APP_TAGLINE} · {format(currentTime, 'HH:mm')}
             </p>
@@ -480,9 +483,12 @@ export default function App() {
       >
         <div className="hidden md:block p-5 text-center border-b border-white/10 shrink-0 sidebar-clock">
           <div className="flex items-center justify-center gap-3 mb-3">
-            <img src="/icons/icon.svg" alt="" className="w-12 h-12 rounded-lg" width={48} height={48} />
+            <img src="/icons/icon.svg" alt="" className="w-8 h-8 rounded-lg" width={32} height={32} />
             <div className="text-left">
-              <p className="font-serif text-2xl text-[var(--color-monastery-accent)] leading-none">{APP_NAME}</p>
+              <p className="font-serif text-xl text-[var(--color-monastery-accent)] leading-none sidebar-app-title">
+                {APP_NAME}
+                <span className="sidebar-version-on-hover">v{VERSION}</span>
+              </p>
               <p className="text-xs uppercase tracking-widest opacity-60">{APP_TAGLINE}</p>
             </div>
           </div>
@@ -500,27 +506,7 @@ export default function App() {
           <DayPlaylistSidebar currentTime={currentTime} />
         </div>
 
-        <div className="p-4 border-t border-white/10 flex flex-col items-stretch gap-3 shrink-0 sidebar-footer">
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); cycleFontScale(); }}
-            className="sidebar-footer-btn"
-            title="Tamaño de letra (F)"
-          >
-            Letra: {fontScale === 'sm' ? 'pequeña' : fontScale === 'md' ? 'media' : 'grande'}
-          </button>
-          <p className="text-sm uppercase tracking-widest text-center opacity-70 flex items-center justify-center gap-2">
-            <a href="https://gatrivi.com" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-monastery-accent)] transition-colors">Gatrivi</a>
-            <span className="opacity-50">|</span>
-            <span>v{VERSION}</span>
-          </p>
-          <button 
-            onClick={rechargeChapel}
-            className="sidebar-footer-btn"
-          >
-            Recargar Capilla
-          </button>
-        </div>
+        {/* Sidebar footer intentionally removed for TV readability */}
       </aside>
 
       {sidebarOpen && <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />}
@@ -605,7 +591,7 @@ export default function App() {
             )}
 
             <AnimatePresence mode="wait">
-              {fragment ? (
+            {fragment ? (
                 <motion.div
                   key={`${activeSlotIndex}-${fragment.title}`}
                   initial={{ opacity: 0, scale: 0.98 }}
@@ -616,8 +602,6 @@ export default function App() {
                 >
                   <AutoPager
                     progress={readingProgress}
-                    title={fragment.title}
-                    subtitle={fragment.subtitle}
                   >
                     {fragment.text}
                   </AutoPager>
@@ -629,53 +613,75 @@ export default function App() {
           </div>
         </div>
 
-        <div className={`h-12 glass-panel border-t border-[var(--color-monastery-accent)]/10 flex items-center px-4 md:px-6 gap-3 md:gap-4 transition-all duration-700 ${focusMode ? 'opacity-0 pointer-events-none translate-y-full' : 'opacity-85 md:opacity-40 md:hover:opacity-90'} ${autoplayBlocked ? 'opacity-70' : ''}`} onClick={(e) => e.stopPropagation()}>
-          <button onClick={togglePlayPause} disabled={isLoadingAudio || isLoadingText} className="flex items-center justify-center w-9 h-9 md:w-8 md:h-8 rounded-full border border-white/20 hover:border-[var(--color-monastery-accent)] hover:text-[var(--color-monastery-accent)] transition-all disabled:opacity-30 shrink-0" title="Reproducir / Pausar (Espacio)">
-            {isLoadingAudio || (isLoadingText && !fragment) ? <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 2, ease: "linear" }}><Bell size={14} className="md:size-3" /></motion.div> : isPlaying ? <Pause size={14} className="md:size-3" /> : <Play size={14} className="ml-0.5 md:size-3" />}
+        {!focusMode && !transportOpen && (
+          <button
+            type="button"
+            className="transport-toggle glass-panel border border-[var(--color-monastery-accent)]/20 px-4 py-2 rounded-full flex items-center gap-2 opacity-85"
+            onClick={(e) => {
+              e.stopPropagation();
+              setTransportOpen(true);
+            }}
+            aria-label="Mostrar controles"
+            title="Mostrar controles"
+          >
+            <span className="text-[12px] uppercase tracking-wider" style={{ color: 'var(--color-monastery-accent)' }}>
+              Controles
+            </span>
           </button>
-          
-          <button onClick={toggleFocusMode} className="hover:text-[var(--color-monastery-accent)] transition-colors shrink-0 opacity-70 hover:opacity-100" title="Modo Zen (Z)">
-            {focusMode ? <EyeOff size={16} className="md:size-3.5" /> : <Eye size={16} className="md:size-3.5" />}
-          </button>
+        )}
 
-          <button onClick={toggleMute} className="hover:text-[var(--color-monastery-accent)] transition-colors shrink-0 opacity-70 hover:opacity-100" title="Silenciar (M)">
-            {isMuted ? <VolumeX size={16} className="md:size-3.5" /> : <Volume2 size={16} className="md:size-3.5" />}
-          </button>
-          
-          <button onClick={toggleAmbient} className={`flex items-center gap-1 p-1.5 rounded-full hover:bg-white/10 hover:text-[var(--color-monastery-accent)] transition-all shrink-0 ${ambientEnabled ? 'text-[var(--color-monastery-accent)] opacity-100' : 'opacity-70 hover:opacity-100'}`} title="Sonido Ambiente (A)">
-            <Waves size={16} />
-            <span className="text-[10px] uppercase tracking-wider">Ambiente</span>
-          </button>
-
-          <button onClick={() => setShowRecorder(!showRecorder)} className={`flex items-center gap-1 p-1.5 rounded-full hover:bg-white/10 hover:text-[var(--color-monastery-accent)] transition-all shrink-0 ${showRecorder ? 'text-[var(--color-monastery-accent)] opacity-100' : 'opacity-70 hover:opacity-100'} ${hasRecording ? 'relative' : ''}`} title="Grabar Voz (V)">
-            <Mic size={16} />
-            <span className="text-[10px] uppercase tracking-wider">Voz</span>
-            {hasRecording && !showRecorder && (
-              <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-green-500" />
-            )}
-          </button>
-
-          <div className="flex-1 flex items-center gap-3 min-w-0">
-            <span className="text-[10px] font-mono opacity-50 w-8 text-right shrink-0 hidden sm:inline">{formatTime(audioProgress)}</span>
-            <div className="flex-1 scrubber-bar cursor-pointer" onClick={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              const pct = (e.clientX - rect.left) / rect.width;
-              if (audioRef.current && audioDuration > 0) {
-                audioRef.current.currentTime = pct * audioDuration;
-              }
-            }}>
-              <motion.div 
-                className="scrubber-progress"
-                style={{ width: `${audioDuration > 0 ? (audioProgress / audioDuration) * 100 : 0}%` }}
-              >
-                <div className="scrubber-glow" />
-              </motion.div>
+        {!focusMode && transportOpen && (
+          <div className={`h-12 glass-panel border-t border-[var(--color-monastery-accent)]/10 flex items-center px-4 md:px-6 gap-3 md:gap-4 transition-all duration-300`} onClick={(e) => e.stopPropagation()}>
+            <button onClick={togglePlayPause} disabled={isLoadingAudio || isLoadingText} className="flex items-center justify-center w-9 h-9 md:w-8 md:h-8 rounded-full border border-white/20 hover:border-[var(--color-monastery-accent)] hover:text-[var(--color-monastery-accent)] transition-all disabled:opacity-30 shrink-0" title="Reproducir / Pausar (Espacio)">
+              {isLoadingAudio || (isLoadingText && !fragment) ? <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 2, ease: "linear" }}><Bell size={14} className="md:size-3" /></motion.div> : isPlaying ? <Pause size={14} className="md:size-3" /> : <Play size={14} className="ml-0.5 md:size-3" />}
+            </button>
+            <button onClick={toggleFocusMode} className="hover:text-[var(--color-monastery-accent)] transition-colors shrink-0 opacity-80 hover:opacity-100" title="Modo Zen (Z)">
+              {focusMode ? <EyeOff size={16} className="md:size-3.5" /> : <Eye size={16} className="md:size-3.5" />}
+            </button>
+            <button onClick={toggleMute} className="hover:text-[var(--color-monastery-accent)] transition-colors shrink-0 opacity-80 hover:opacity-100" title="Silenciar (M)">
+              {isMuted ? <VolumeX size={16} className="md:size-3.5" /> : <Volume2 size={16} className="md:size-3.5" />}
+            </button>
+            <button onClick={toggleAmbient} className={`flex items-center gap-1 p-1.5 rounded-full hover:bg-white/10 hover:text-[var(--color-monastery-accent)] transition-all shrink-0 ${ambientEnabled ? 'text-[var(--color-monastery-accent)] opacity-100' : 'opacity-70 hover:opacity-100'}`} title="Sonido Ambiente (A)">
+              <Waves size={16} />
+              <span className="text-[10px] uppercase tracking-wider">Ambiente</span>
+            </button>
+            <button onClick={() => setShowRecorder(!showRecorder)} className={`flex items-center gap-1 p-1.5 rounded-full hover:bg-white/10 hover:text-[var(--color-monastery-accent)] transition-all shrink-0 ${showRecorder ? 'text-[var(--color-monastery-accent)] opacity-100' : 'opacity-70 hover:opacity-100'} ${hasRecording ? 'relative' : ''}`} title="Grabar Voz (V)">
+              <Mic size={16} />
+              <span className="text-[10px] uppercase tracking-wider">Voz</span>
+              {hasRecording && !showRecorder && (
+                <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-green-500" />
+              )}
+            </button>
+            <div className="flex-1 flex items-center gap-3 min-w-0">
+              <span className="text-[10px] font-mono opacity-50 w-8 text-right shrink-0 hidden sm:inline">{formatTime(audioProgress)}</span>
+              <div className="flex-1 scrubber-bar cursor-pointer" onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const pct = (e.clientX - rect.left) / rect.width;
+                if (audioRef.current && audioDuration > 0) {
+                  audioRef.current.currentTime = pct * audioDuration;
+                }
+              }}>
+                <motion.div
+                  className="scrubber-progress"
+                  style={{ width: `${audioDuration > 0 ? (audioProgress / audioDuration) * 100 : 0}%` }}
+                >
+                  <div className="scrubber-glow" />
+                </motion.div>
+              </div>
+              <span className="text-[10px] font-mono opacity-50 w-8 shrink-0 hidden sm:inline">{formatTime(audioDuration)}</span>
             </div>
-            <span className="text-[10px] font-mono opacity-50 w-8 shrink-0 hidden sm:inline">{formatTime(audioDuration)}</span>
+            {autoplayBlocked && !isPlaying && <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-[10px] uppercase tracking-widest text-[var(--color-monastery-accent)] shrink-0">Toca para comenzar</motion.span>}
+            <button
+              type="button"
+              className="shrink-0 opacity-70 hover:opacity-100"
+              onClick={() => setTransportOpen(false)}
+              aria-label="Ocultar controles"
+              title="Ocultar controles"
+            >
+              <span style={{ color: 'var(--color-monastery-accent)' }}>✕</span>
+            </button>
           </div>
-
-          {autoplayBlocked && !isPlaying && <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-[10px] uppercase tracking-widest text-[var(--color-monastery-accent)] shrink-0">Toca para comenzar</motion.span>}
-        </div>
+        )}
 
         {focusMode && (
           <div 

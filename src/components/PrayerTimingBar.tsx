@@ -13,7 +13,7 @@ export function PrayerTimingBar({ currentTime }: PrayerTimingBarProps) {
   return (
     <div className="prayer-timing-bar w-full max-w-3xl mx-auto px-2">
       <div className="prayer-timing-meta flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-2 opacity-80">
-        <span className="hidden sm:inline font-serif text-sm truncate">
+        <span className="font-serif text-sm truncate">
           {slot?.title}
           {slot?.subtitle ? ` · ${slot.subtitle}` : ''}
         </span>
