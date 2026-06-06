@@ -414,7 +414,7 @@ export default function App() {
           }
         }
       }
-    }, 1000);
+    }, 200);
     return () => clearInterval(timer);
   }, [currentHour, isPlaying, isLoadingAudio, isLoadingText, playHour, playResonatorBell, manualSlotIndex, syncSlotToView]);
 

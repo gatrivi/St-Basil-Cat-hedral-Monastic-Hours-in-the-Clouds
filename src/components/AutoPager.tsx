@@ -60,6 +60,9 @@ export const AutoPager: React.FC<AutoPagerProps> = ({ children, progress, title,
     const total = chars.length;
     if (total === 0) return;
     const targetIndex = Math.floor(progress * total);
+    const last = (window as any).__CATEDRAL_LAST_TIDX ?? null;
+    if (last === targetIndex) return;
+    (window as any).__CATEDRAL_LAST_TIDX = targetIndex;
     for (let i = 0; i < total; i++) {
       const el = chars[i] as HTMLElement;
       if (i <= targetIndex) {
