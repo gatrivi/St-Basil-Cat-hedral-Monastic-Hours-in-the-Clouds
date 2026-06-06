@@ -157,6 +157,10 @@ html[data-font-scale='lg'] {
   height: 100%;
 }
 
+.focus-mode .prayer-timing-bar {
+  display: none;
+}
+
 .sidebar-panel {
   background: rgba(12, 8, 5, 0.92);
 }
