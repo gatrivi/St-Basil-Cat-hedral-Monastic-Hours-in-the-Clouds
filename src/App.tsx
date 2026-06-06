@@ -482,24 +482,8 @@ export default function App() {
         className={`sidebar-panel fixed md:static inset-y-0 left-0 z-40 w-[min(100vw,22rem)] md:w-[min(28vw,22rem)] glass-panel border-r border-[var(--color-monastery-accent)]/10 flex flex-col transition-all duration-700 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} ${focusMode ? 'md:-translate-x-full md:opacity-0 pointer-events-none' : 'opacity-100'} pt-14 md:pt-0`}
       >
         <div className="hidden md:block p-5 text-center border-b border-white/10 shrink-0 sidebar-clock">
-          <div className="flex items-center justify-center gap-3 mb-3">
-            <img src="/icons/icon.svg" alt="" className="w-8 h-8 rounded-lg" width={32} height={32} />
-            <div className="text-left">
-              <p className="font-serif text-xl text-[var(--color-monastery-accent)] leading-none sidebar-app-title">
-                {APP_NAME}
-                <span className="sidebar-version-on-hover">v{VERSION}</span>
-              </p>
-              <p className="text-xs uppercase tracking-widest opacity-60">{APP_TAGLINE}</p>
-            </div>
-          </div>
           <motion.h1 key={format(currentTime, 'HH:mm')} initial={{ opacity: 0.5 }} animate={{ opacity: 1 }} transition={{ duration: 1.5 }} className="font-serif text-5xl text-[var(--color-monastery-accent)] leading-none">{format(currentTime, 'HH:mm')}</motion.h1>
           <p className="text-sm uppercase tracking-[0.2em] opacity-80 mt-2">{format(currentTime, "EEEE, d 'de' MMMM", { locale: es })}</p>
-          {currentHour && (
-            <p className="font-serif text-xl mt-3 text-[var(--color-monastery-accent)]">
-              {currentHour.name}
-              <span className="block text-sm opacity-70 font-sans mt-1">Próxima: {nextHour?.name} · {nextHour?.timeString}</span>
-            </p>
-          )}
         </div>
         
         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
