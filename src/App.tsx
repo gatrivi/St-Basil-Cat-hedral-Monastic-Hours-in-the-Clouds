@@ -17,11 +17,14 @@ import { generatePrayerText, generateAudioOrFallback, SpeechController } from '.
 import { Recorder } from './components/Recorder';
 import { AutoPager } from './components/AutoPager';
 import { IncenseTrail } from './components/IncenseTrail';
+import { UpdateBanner } from './components/UpdateBanner';
 import { getPrayerRecordingMetadata } from './services/recordings';
+import { useUpdateCheck } from './hooks/useUpdateCheck';
+import { perfLog } from './lib/perfLog';
 
 // Declare the version injected by Vite
 declare const __APP_VERSION__: string;
-const VERSION = '1.3.6';
+const VERSION = '1.3.7';
 
 type FontScale = 'sm' | 'md' | 'lg';
 const FONT_SCALE_KEY = 'cathedral-font-scale'; 
@@ -190,8 +193,15 @@ export default function App() {
   const lastPlayedHourRef = useRef<string | null>(null);
   const prayerTextRef = useRef<HTMLDivElement | null>(null);
   const manualSlotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSlotIndexRef = useRef<number | null>(null);
+  const tickCountRef = useRef(0);
 
   const [readingProgress, setReadingProgress] = useState(0);
+  const { updateAvailable, reload: reloadApp } = useUpdateCheck(VERSION);
+
+  useEffect(() => {
+    perfLog('boot', { version: VERSION, href: window.location.href });
+  }, []);
 
   useEffect(() => {
     if (currentHour) {
@@ -212,8 +222,11 @@ export default function App() {
   }, []);
 
   const syncSlotToView = useCallback((slotIndex: number) => {
+    if (lastSlotIndexRef.current === slotIndex) return;
+    lastSlotIndexRef.current = slotIndex;
     const slot = DAY_SLOTS[slotIndex];
     if (!slot) return;
+    perfLog('slot-sync:apply', { slotIndex, title: slot.title });
     setFragment(slot.fragment);
     setFragmentIndex(slot.fragmentIndex);
   }, []);
@@ -221,6 +234,7 @@ export default function App() {
   const bumpManualSlot = useCallback((delta: number) => {
     const base = manualSlotIndex ?? getDayPosition(currentTime).slotIndex;
     const next = (base + delta + DAY_SLOTS.length) % DAY_SLOTS.length;
+    perfLog('manual-nav', { delta, next });
     setManualSlotIndex(next);
     syncSlotToView(next);
     lastInteractionRef.current = Date.now();
@@ -242,7 +256,7 @@ export default function App() {
 
   const playHour = useCallback(async (hour: LiturgicalHour) => {
     if (isLoadingAudio || isLoadingText) return;
-    
+    perfLog('playHour', hour.name);
     setIsLoadingText(true);
     setError(null);
     setUsingFallback(false);
@@ -325,7 +339,10 @@ export default function App() {
 
   useEffect(() => {
     const pos = getDayPosition(currentTime);
-    setReadingProgress(pos.slotProgress);
+    setReadingProgress(prev => {
+      if (Math.abs(prev - pos.slotProgress) < 0.0005) return prev;
+      return pos.slotProgress;
+    });
     if (manualSlotIndex === null) {
       syncSlotToView(pos.slotIndex);
     }
@@ -348,11 +365,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Ambient drone only when user enables "Ambiente" (not during prayer playback)
     const shouldBeActive = ambientEnabled && !isMuted;
+    perfLog('ambient', { enabled: shouldBeActive, ambientEnabled, isMuted });
     if (shouldBeActive) startResonator();
     else stopResonator();
-  }, [isPlaying, ambientEnabled, isMuted, startResonator, stopResonator]);
+  }, [ambientEnabled, isMuted, startResonator, stopResonator]);
 
   useEffect(() => {
     if (!currentHour) {
@@ -370,15 +387,23 @@ export default function App() {
       setCurrentTime(now);
       const { currentHour: curr, nextHour: next } = getCurrentAndNextHour(now);
       const hourChanged = curr?.name !== currentHour?.name;
-      setCurrentHour(curr);
-      setNextHour(next);
+
+      setCurrentHour(prev => (prev?.name === curr?.name ? prev : curr));
+      setNextHour(prev => (prev?.name === next?.name ? prev : next));
 
       if (manualSlotIndex === null) {
         syncSlotToView(getDayPosition(now).slotIndex);
       }
 
+      tickCountRef.current += 1;
+      if (tickCountRef.current % 60 === 0) {
+        perfLog('tick:60s', { hour: curr?.name, slot: getDayPosition(now).slotIndex });
+      }
+
       if (hourChanged && curr) {
+        perfLog('hour-change', { from: currentHour?.name, to: curr.name });
         setManualSlotIndex(null);
+        lastSlotIndexRef.current = null;
         if (!isPlaying && !isLoadingAudio && !isLoadingText) {
           const hourId = `${format(now, 'yyyy-MM-dd')}-${curr.name}`;
           if (lastPlayedHourRef.current !== hourId) {
@@ -429,6 +454,10 @@ export default function App() {
       <CelestialClockwork />
       <audio ref={bellRef} src={BELL_SOUND_URL} preload="auto" />
       <audio ref={audioRef} onEnded={() => { setIsPlaying(false); }} onPause={() => setIsPlaying(false)} onPlay={() => setIsPlaying(true)} onTimeUpdate={(e) => { const audio = e.currentTarget; if (audio.duration) { setAudioProgress(audio.currentTime); setAudioDuration(audio.duration); } }} onLoadedMetadata={(e) => setAudioDuration(e.currentTarget.duration || 0)} />
+
+      {updateAvailable && (
+        <UpdateBanner version={updateAvailable.version} onReload={reloadApp} />
+      )}
 
       <header className={`md:hidden fixed top-0 left-0 right-0 z-40 glass-panel border-b border-[var(--color-monastery-accent)]/10 min-h-14 flex items-center justify-between px-3 gap-2 transition-all duration-700 ${focusMode ? 'opacity-0 pointer-events-none -translate-y-full' : 'opacity-100'}`}>
         <button onClick={(e) => { e.stopPropagation(); setSidebarOpen(!sidebarOpen); }} className="p-2 opacity-80 hover:opacity-100 transition-opacity shrink-0" aria-label="Menú">
