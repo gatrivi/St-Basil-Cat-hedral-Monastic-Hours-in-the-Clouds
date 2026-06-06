@@ -188,6 +188,29 @@ function slotsForGroup(group: PrayerGroup): PrayerSlot[] {
   return DAY_SLOTS.filter(s => s.groupKind === 'hour' && s.hour === group.hour);
 }
 
+function prayerWeight(slot: PrayerSlot): number {
+  return Math.max(40, slot.fragment.text.replace(/\s+/g, ' ').trim().length);
+}
+
+/** Slots and progress within the current liturgical group (for dotted progress bar). */
+export function getGroupProgress(now: Date = new Date()) {
+  const pos = getDayPosition(now);
+  const slots = slotsForGroup(pos.group);
+  const indexInGroup = Math.max(0, slots.findIndex(s => s.id === pos.slot.id));
+  const weights = slots.map(prayerWeight);
+  const totalWeight = weights.reduce((a, b) => a + b, 0) || 1;
+  return {
+    group: pos.group,
+    slots,
+    indexInGroup,
+    slotProgress: pos.slotProgress,
+    weights,
+    totalWeight,
+    msUntilNext: pos.msUntilNext,
+    nextSlot: pos.nextSlot,
+  };
+}
+
 /** Titles for current + next liturgical group (fits one sidebar screen). */
 export function getSidebarWheel(now: Date = new Date()) {
   const pos = getDayPosition(now);

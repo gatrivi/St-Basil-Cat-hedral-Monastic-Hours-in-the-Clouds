@@ -1,24 +1,21 @@
-import { motion } from 'motion/react';
-import { DAY_SLOTS, formatMinutesUntil, getDayPosition } from '../lib/liturgicalDay';
+import { formatMinutesUntil, getGroupProgress } from '../lib/liturgicalDay';
 
 interface PrayerTimingBarProps {
   currentTime: Date;
   slotIndexOverride?: number | null;
 }
 
-export function PrayerTimingBar({ currentTime, slotIndexOverride }: PrayerTimingBarProps) {
-  const pos = getDayPosition(currentTime);
-  const activeIndex = slotIndexOverride ?? pos.slotIndex;
-  const slot = DAY_SLOTS[activeIndex] ?? pos.slot;
-  const nextSlot = DAY_SLOTS[(activeIndex + 1) % DAY_SLOTS.length] ?? pos.nextSlot;
-  const { slotProgress, msUntilNext } = pos;
+export function PrayerTimingBar({ currentTime }: PrayerTimingBarProps) {
+  const gp = getGroupProgress(currentTime);
+  const { slots, indexInGroup, slotProgress, weights, totalWeight, nextSlot, msUntilNext } = gp;
+  const slot = slots[indexInGroup] ?? slots[0];
 
   return (
     <div className="prayer-timing-bar w-full max-w-3xl mx-auto px-2">
       <div className="prayer-timing-meta flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-2 opacity-80">
         <span className="hidden sm:inline font-serif text-sm truncate">
-          {slot.title}
-          {slot.subtitle ? ` · ${slot.subtitle}` : ''}
+          {slot?.title}
+          {slot?.subtitle ? ` · ${slot.subtitle}` : ''}
         </span>
         {nextSlot && (
           <span className="text-xs sm:text-sm uppercase tracking-wider sm:normal-case sm:tracking-normal text-center sm:text-right">
@@ -29,14 +26,32 @@ export function PrayerTimingBar({ currentTime, slotIndexOverride }: PrayerTiming
         )}
       </div>
 
-      <div className="h-1 rounded-full bg-white/10 overflow-hidden mb-2" aria-hidden>
-        <motion.div
-          className="h-full bg-[var(--color-monastery-accent)]/80"
-          style={{ width: `${slotProgress * 100}%` }}
-          layout
-        />
+      <div
+        className="prayer-progress-dots flex items-stretch gap-1 h-2 mb-2"
+        role="progressbar"
+        aria-valuenow={Math.round(((indexInGroup + slotProgress) / Math.max(1, slots.length)) * 100)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`Progreso del grupo ${gp.group.label}`}
+      >
+        {slots.map((s, i) => {
+          const fill =
+            i < indexInGroup ? 1 : i === indexInGroup ? slotProgress : 0;
+          return (
+            <div
+              key={s.id}
+              className="prayer-progress-dot rounded-full overflow-hidden bg-white/10 min-w-[4px]"
+              style={{ flex: `${weights[i]} 0 0` }}
+              title={s.title}
+            >
+              <div
+                className="h-full bg-[var(--color-monastery-accent)]/85 transition-[width] duration-300 ease-linear rounded-full"
+                style={{ width: `${fill * 100}%` }}
+              />
+            </div>
+          );
+        })}
       </div>
-
     </div>
   );
 }

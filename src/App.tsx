@@ -24,7 +24,7 @@ import { perfLog } from './lib/perfLog';
 
 // Declare the version injected by Vite
 declare const __APP_VERSION__: string;
-const VERSION = '1.3.7';
+const VERSION = '1.3.8';
 
 type FontScale = 'sm' | 'md' | 'lg';
 const FONT_SCALE_KEY = 'cathedral-font-scale'; 
@@ -322,7 +322,6 @@ export default function App() {
 
   const handleManualStart = () => {
     setAutoplayBlocked(false);
-    initResonator(true);
     if (audioRef.current) audioRef.current.play();
     if (bellRef.current) bellRef.current.play();
   };
@@ -354,7 +353,6 @@ export default function App() {
     setCurrentHour(curr);
     setNextHour(next);
     syncSlotToView(getDayPosition(now).slotIndex);
-    initResonator(true);
   }, [syncSlotToView]);
 
   useEffect(() => {
@@ -365,11 +363,13 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const shouldBeActive = ambientEnabled && !isMuted;
-    perfLog('ambient', { enabled: shouldBeActive, ambientEnabled, isMuted });
-    if (shouldBeActive) startResonator();
-    else stopResonator();
-  }, [ambientEnabled, isMuted, startResonator, stopResonator]);
+    if (ambientEnabled && !isMuted) {
+      initResonator(true);
+      startResonator();
+    } else {
+      stopResonator();
+    }
+  }, [ambientEnabled, isMuted, initResonator, startResonator, stopResonator]);
 
   useEffect(() => {
     if (!currentHour) {

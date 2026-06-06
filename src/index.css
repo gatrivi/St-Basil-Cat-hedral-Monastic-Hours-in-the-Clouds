@@ -149,8 +149,12 @@ html[data-font-scale='lg'] {
   line-height: 1.65;
 }
 
-.focus-mode .prayer-timing-bar {
-  display: none;
+.prayer-progress-dots {
+  width: 100%;
+}
+
+.prayer-progress-dot {
+  height: 100%;
 }
 
 .sidebar-panel {
