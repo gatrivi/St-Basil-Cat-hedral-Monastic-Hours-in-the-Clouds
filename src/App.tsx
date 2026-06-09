@@ -171,6 +171,7 @@ export default function App() {
   const [isCopied, setIsCopied] = useState(false);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isLandscapeMobile, setIsLandscapeMobile] = useState(false);
   const [showRecorder, setShowRecorder] = useState(false);
   const [ambientEnabled, setAmbientEnabled] = useState(() => {
     try { return localStorage.getItem('cathedral-ambient') === 'true'; } catch { return false; }
@@ -202,6 +203,17 @@ export default function App() {
 
   useEffect(() => {
     perfLog('boot', { version: VERSION, href: window.location.href });
+  }, []);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(orientation: landscape) and (max-width: 767px)');
+    const update = () => setIsLandscapeMobile(mq.matches);
+    update();
+    // Some older browsers use addListener/removeListener.
+    (mq.addEventListener ? mq.addEventListener('change', update) : mq.addListener(update));
+    return () => {
+      (mq.removeEventListener ? mq.removeEventListener('change', update) : mq.removeListener(update));
+    };
   }, []);
 
   useEffect(() => {
@@ -446,7 +458,10 @@ export default function App() {
   }, [cleanupResonator]);
 
   return (
-    <div className={`h-screen flex overflow-hidden relative cursor-default ${focusMode ? 'focus-mode' : ''}`} onClick={() => { if (autoplayBlocked) handleManualStart(); }}>
+    <div
+      className={`h-screen flex overflow-hidden relative cursor-default ${focusMode ? 'focus-mode' : ''} ${isLandscapeMobile ? 'landscape-mobile' : ''} ${isLandscapeMobile && sidebarOpen ? 'sidebar-open' : ''}`}
+      onClick={() => { if (autoplayBlocked) handleManualStart(); }}
+    >
       <BackgroundLayers currentHour={currentHour} />
       <IncenseTrail />
       <LightShafts />
@@ -495,10 +510,10 @@ export default function App() {
 
       {sidebarOpen && <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />}
 
-      <main className="flex-1 flex flex-col relative min-w-0 pt-14 md:pt-0 prayer-main-view" onTouchStart={(e) => { touchStartX.current = e.changedTouches[0].screenX; }} onTouchEnd={(e) => { if (touchStartX.current == null) return; const diff = touchStartX.current - e.changedTouches[0].screenX; if (Math.abs(diff) > 50) { if (diff > 0) goToNextFragment(); else goToPrevFragment(); } touchStartX.current = null; }}>
+      <main className="prayer-main flex-1 flex flex-col relative min-w-0 pt-14 md:pt-0 prayer-main-view" onTouchStart={(e) => { touchStartX.current = e.changedTouches[0].screenX; }} onTouchEnd={(e) => { if (touchStartX.current == null) return; const diff = touchStartX.current - e.changedTouches[0].screenX; if (Math.abs(diff) > 50) { if (diff > 0) goToNextFragment(); else goToPrevFragment(); } touchStartX.current = null; }}>
         <div 
           ref={prayerTextRef}
-          className="flex-1 overflow-hidden flex flex-col items-center px-4 py-4 md:px-8 md:py-6 relative min-h-0"
+          className="prayer-text-container flex-1 overflow-hidden flex flex-col items-center px-4 py-4 md:px-8 md:py-6 relative min-h-0"
         >
           <div className="sacred-frame" />
           
@@ -523,7 +538,7 @@ export default function App() {
             )}
           </AnimatePresence>
 
-          <div className="w-full max-w-4xl h-full relative group flex flex-col min-h-0">
+          <div className="prayer-text-inner w-full max-w-4xl h-full relative group flex flex-col min-h-0">
             {!focusMode && (
               <div className="shrink-0 mb-2 z-10">
                 <PrayerTimingBar currentTime={currentTime} slotIndexOverride={manualSlotIndex} />
