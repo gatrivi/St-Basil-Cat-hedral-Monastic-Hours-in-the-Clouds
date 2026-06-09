@@ -12,15 +12,16 @@ export function PrayerTimingBar({ currentTime }: PrayerTimingBarProps) {
 
   return (
     <div className="prayer-timing-bar w-full max-w-3xl mx-auto px-2">
-      <div className="prayer-timing-meta flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-2 opacity-80">
-        <span className="font-serif text-sm truncate">
+      <div className="prayer-timing-meta flex items-center justify-between gap-2 mb-2 opacity-80">
+        {/* Landscape mobile needs title + “Siguiente” on one line. */}
+        <span className="font-serif text-xs truncate whitespace-nowrap">
           {slot?.title}
           {slot?.subtitle ? ` · ${slot.subtitle}` : ''}
         </span>
         {nextSlot && (
-          <span className="text-xs sm:text-sm uppercase tracking-wider sm:normal-case sm:tracking-normal text-center sm:text-right">
-            Siguiente: <span className="text-[var(--color-monastery-accent)]">{nextSlot.title}</span>
-            {' · '}
+          <span className="text-sm uppercase tracking-wider whitespace-nowrap text-center sm:text-right truncate">
+            Siguiente:{' '}
+            <span className="text-[var(--color-monastery-accent)]">{nextSlot.title}</span> ·{' '}
             {formatMinutesUntil(msUntilNext)}
           </span>
         )}

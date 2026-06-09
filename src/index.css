@@ -114,6 +114,45 @@ body {
   );
 }
 
+@media (max-width: 767px) and (orientation: landscape) {
+  :root {
+    --landscape-sidebar-w: min(33vw, 12rem);
+  }
+
+  /* Remove dark vignette/mask fade on wide horizontal phones */
+  .landscape-mobile .prayer-main-view {
+    mask-image: none !important;
+    -webkit-mask-image: none !important;
+  }
+
+  .landscape-mobile .sidebar-panel {
+    width: var(--landscape-sidebar-w) !important;
+  }
+
+  /* When sidebar is open, shift prayer content into right 2/3 */
+  .landscape-mobile.sidebar-open .prayer-main {
+    padding-left: var(--landscape-sidebar-w);
+  }
+
+  /* Smaller paddings + left aligned text to use the width */
+  .landscape-mobile .prayer-text-container {
+    padding: 0.25rem !important; /* x0.25 */
+    align-items: flex-start !important;
+  }
+
+  .landscape-mobile .prayer-text-inner {
+    max-width: none !important;
+  }
+
+  .landscape-mobile .prayer-timing-bar {
+    max-width: none !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+}
+
 @media (max-width: 767px) {
   .prayer-text-scroll {
     overflow-x: hidden;
