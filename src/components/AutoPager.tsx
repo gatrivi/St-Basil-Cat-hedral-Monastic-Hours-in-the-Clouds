@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
-import { motion } from 'motion/react';
 import Markdown from 'react-markdown';
 
 interface AutoPagerProps {
   children: string;
   progress: number;
+  title?: string;
+  subtitle?: string;
 }
 
-// Function to safely wrap text nodes in spans for DOM manipulation
 const wrapCharacters = (children: React.ReactNode): React.ReactNode => {
   return React.Children.map(children, child => {
     if (typeof child === 'string') {
@@ -20,54 +20,46 @@ const wrapCharacters = (children: React.ReactNode): React.ReactNode => {
     if (React.isValidElement(child)) {
       const element = child as React.ReactElement<{ children?: React.ReactNode }>;
       return React.cloneElement(element, {
-        children: wrapCharacters(element.props.children)
+        children: wrapCharacters(element.props.children),
       });
     }
     return child;
   });
 };
 
-export const AutoPager: React.FC<AutoPagerProps> = ({ children, progress }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
+/** Main prayer: vertical split-flap scroll (face-on), synced to slot progress. */
+export const AutoPager: React.FC<AutoPagerProps> = ({ children, progress, title, subtitle }) => {
+  const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [contentHeight, setContentHeight] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
 
-  const radius = 4000; // Adjusted for a slightly different curve
-
   useLayoutEffect(() => {
     const updateHeights = () => {
-      if (containerRef.current && contentRef.current) {
-        setContainerHeight(containerRef.current.clientHeight);
+      if (viewportRef.current && contentRef.current) {
+        setContainerHeight(viewportRef.current.clientHeight);
         setContentHeight(contentRef.current.scrollHeight);
       }
     };
-
-    // Delay slightly to ensure fonts are loaded and layout is stable
     const timer = setTimeout(updateHeights, 100);
-
     let observer: ResizeObserver | null = null;
     if (typeof ResizeObserver !== 'undefined') {
       observer = new ResizeObserver(updateHeights);
-      if (containerRef.current) observer.observe(containerRef.current);
+      if (viewportRef.current) observer.observe(viewportRef.current);
       if (contentRef.current) observer.observe(contentRef.current);
     }
-
     return () => {
       clearTimeout(timer);
       if (observer) observer.disconnect();
     };
   }, [children]);
 
-  // High-performance DOM manipulation for character highlighting
   useEffect(() => {
     if (!contentRef.current) return;
     const chars = contentRef.current.querySelectorAll('.liturgy-char');
     const total = chars.length;
     if (total === 0) return;
-
     const targetIndex = Math.floor(progress * total);
-    
     for (let i = 0; i < total; i++) {
       const el = chars[i] as HTMLElement;
       if (i <= targetIndex) {
@@ -80,38 +72,41 @@ export const AutoPager: React.FC<AutoPagerProps> = ({ children, progress }) => {
     }
   }, [progress, children]);
 
-  // Calculate rotation and translation to keep the "current line" at roughly the same vertical spot
-  const rotationAngle = (contentHeight * progress) / radius * (180 / Math.PI);
-  // Keep the text scrolling naturally based on progress, without massive artificial offsets
-  const translateY = -progress * contentHeight;
+  const scrollRange = Math.max(0, contentHeight - containerHeight);
+  const translateY = -progress * scrollRange;
 
   return (
-    <div ref={containerRef} className="relative overflow-hidden w-full h-full flex flex-col items-center justify-start pt-12 md:pt-20">
-      <motion.div
-        animate={{ 
-          rotate: -rotationAngle,
-          y: translateY
-        }}
-        transition={{ duration: 0.2, ease: "linear" }}
-        style={{ 
-          transformOrigin: `50% ${radius}px`,
-          width: '100%'
-        }}
-        className="relative"
-      >
-        <div ref={contentRef} className="w-full text-center px-6 md:px-20 relative pb-40">
-          <Markdown
-            components={{
-              p: ({ children }) => <p className="mb-10 text-2xl md:text-5xl leading-relaxed font-serif">{wrapCharacters(children)}</p>,
-              h2: ({ children }) => <h2 className="font-serif text-4xl md:text-7xl mb-12 text-center text-[var(--color-monastery-accent)]">{wrapCharacters(children)}</h2>,
-              em: ({ children }) => <em className="italic opacity-80">{children}</em>,
-              strong: ({ children }) => <strong className="font-bold text-[var(--color-monastery-accent)]">{children}</strong>,
-            }}
-          >
-            {children}
-          </Markdown>
+    <div className="flex flex-col w-full h-full min-h-0">
+      {(title || subtitle) && (
+        <header className="shrink-0 text-center mb-3 px-2 z-10 hidden md:block">
+          {subtitle && (
+            <p className="text-xs uppercase tracking-[0.25em] opacity-50 mb-1">{subtitle}</p>
+          )}
+          {title && (
+            <h2 className="font-serif text-2xl md:text-4xl text-[var(--color-monastery-accent)] leading-tight">{title}</h2>
+          )}
+        </header>
+      )}
+      <div ref={viewportRef} className="ticker-viewport ticker-viewport--prayer flex-1 min-h-0">
+        <div className="ticker-slot" aria-hidden />
+        <div
+          className="ticker-track ticker-track--prayer"
+          style={{ transform: `translate3d(0, ${translateY}px, 0)` }}
+        >
+          <div ref={contentRef} className="w-full text-center px-3 md:px-10 pb-16 prayer-markdown-body">
+            <Markdown
+              components={{
+                p: ({ children }) => <p className="mb-8 prayer-verse leading-relaxed font-serif">{wrapCharacters(children)}</p>,
+                h2: ({ children }) => <h3 className="font-serif text-xl md:text-2xl mb-6 text-center text-[var(--color-monastery-accent)]">{wrapCharacters(children)}</h3>,
+                em: ({ children }) => <em className="italic opacity-80">{children}</em>,
+                strong: ({ children }) => <strong className="font-bold text-[var(--color-monastery-accent)]">{children}</strong>,
+              }}
+            >
+              {children}
+            </Markdown>
+          </div>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 };

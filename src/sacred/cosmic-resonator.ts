@@ -144,6 +144,7 @@ export class CosmicResonator {
   private totalEnrichment = 0;
   private lfoSpeed = 0.2;
   private _raf: number | null = null;
+  private active = false;
 
   constructor() {}
 
@@ -265,9 +266,7 @@ export class CosmicResonator {
     osc6.start();
 
     this.synth = { osc, osc2, osc3, osc4, osc5, osc6, noise, noiseGain, celestialGain, lfo, lfo2, lfoGain, filter, gainNode, padGain };
-
-    // Start the cosmic modulation loop
-    this._tick();
+    this.active = false;
   }
 
   stop() {
@@ -282,13 +281,16 @@ export class CosmicResonator {
     this.synth = null;
   }
 
-  setActive(active) {
+  setActive(active: boolean) {
     if (!this.synth || !this.soundEnabled) return;
+    this.active = active;
     const { gainNode } = this.synth;
     if (active) {
       this._tick();
     } else {
-      gainNode.gain.setTargetAtTime(0, this.ctx.currentTime, 0.3);
+      if (this._raf) cancelAnimationFrame(this._raf);
+      this._raf = null;
+      gainNode.gain.setTargetAtTime(0, this.ctx!.currentTime, 0.3);
     }
   }
 
@@ -379,7 +381,7 @@ export class CosmicResonator {
 
   // ΓööΓööΓöö Internal cosmic modulation loop (devtrivi) ΓööΓööΓöö
   private _tick() {
-    if (!this.synth || !this.soundEnabled) return;
+    if (!this.synth || !this.soundEnabled || !this.active) return;
 
     const { filter, gainNode, padGain, celestialGain, lfoGain, lfo, lfo2, noiseGain } = this.synth;
     const t = this.ctx.currentTime;

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="La Catedral">
+  <rect width="512" height="512" rx="108" fill="#0a0502"/>
+  <path fill="#1a1008" stroke="#d4af37" stroke-width="6" d="M96 400V220c0-72 72-132 160-132s160 60 160 132v180H96z"/>
+  <path fill="none" stroke="#d4af37" stroke-width="10" stroke-linecap="round" d="M256 108v88M220 152h72"/>
+  <circle cx="256" cy="268" r="52" fill="none" stroke="#d4af37" stroke-width="8"/>
+  <path fill="#d4af37" d="M256 228v80M236 248h40"/>
+</svg>

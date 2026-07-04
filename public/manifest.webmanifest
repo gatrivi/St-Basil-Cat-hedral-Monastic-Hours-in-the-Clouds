@@ -1,0 +1,25 @@
+{
+  "name": "La Catedral — Horas monásticas",
+  "short_name": "Catedral",
+  "description": "Capilla digital para la Liturgia de las Horas.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0502",
+  "theme_color": "#0a0502",
+  "lang": "es",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

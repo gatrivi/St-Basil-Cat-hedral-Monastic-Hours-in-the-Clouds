@@ -30,8 +30,8 @@ body {
 }
 
 .glass-panel {
-  background: rgba(24, 18, 12, 0.75);
-  backdrop-filter: blur(25px);
+  background: rgba(24, 18, 12, 0.55);
+  backdrop-filter: blur(8px);
   border: 1px solid rgba(212, 175, 55, 0.15);
 }
 
@@ -76,7 +76,7 @@ body {
 /* TV Optimization: Ensure high contrast and larger click/focus targets */
 @media (min-width: 1920px) {
   .glass-panel {
-    background: rgba(20, 15, 10, 0.85);
+    background: rgba(20, 15, 10, 0.62);
   }
 }
 
@@ -95,40 +95,321 @@ body {
   background: rgba(212, 175, 55, 0.3);
 }
 
-/* Mask fade for global viewport vignette */
-.mask-fade-y {
+/* Prayer viewport: more readable area, less aggressive fade */
+.prayer-main-view {
+  overflow-x: hidden;
   mask-image: linear-gradient(
     to bottom,
     transparent 0%,
-    black 15%,
-    black 85%,
+    black 6%,
+    black 92%,
     transparent 100%
   );
   -webkit-mask-image: linear-gradient(
     to bottom,
     transparent 0%,
-    black 15%,
-    black 85%,
+    black 6%,
+    black 92%,
     transparent 100%
   );
 }
 
-.global-vignette {
-  position: fixed;
-  inset: 0;
-  z-index: 10;
-  pointer-events: none;
-  background: radial-gradient(
-    circle at center,
-    transparent 40%,
-    rgba(10, 5, 2, 0.4) 100%
-  );
+@media (max-width: 767px) and (orientation: landscape) {
+  :root {
+    --landscape-sidebar-w: min(33vw, 12rem);
+  }
+
+  /* Remove dark vignette/mask fade on wide horizontal phones */
+  .landscape-mobile .prayer-main-view {
+    mask-image: none !important;
+    -webkit-mask-image: none !important;
+  }
+
+  .landscape-mobile .sidebar-panel {
+    width: var(--landscape-sidebar-w) !important;
+  }
+
+  /* When sidebar is open, shift prayer content into right 2/3 */
+  .landscape-mobile.sidebar-open .prayer-main {
+    padding-left: var(--landscape-sidebar-w);
+  }
+
+  /* Smaller paddings + left aligned text to use the width */
+  .landscape-mobile .prayer-text-container {
+    padding: 0.25rem !important; /* x0.25 */
+    align-items: flex-start !important;
+  }
+
+  .landscape-mobile .prayer-text-inner {
+    max-width: none !important;
+  }
+
+  .landscape-mobile .prayer-timing-bar {
+    max-width: none !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
 }
 
-.playing .markdown-body {
-  text-shadow: 0 0 25px rgba(212, 175, 55, 0.15);
-  transition: text-shadow 2s ease;
+@media (max-width: 767px) {
+  .prayer-text-scroll {
+    overflow-x: hidden;
+    max-width: 100%;
+  }
+
+  .prayer-markdown-body {
+    overflow-wrap: anywhere;
+  }
+
+  .sacred-frame {
+    inset: 4px;
+    opacity: 0.35;
+  }
 }
+
+/* Font scale for vision accessibility */
+html[data-font-scale='sm'] {
+  --prayer-text-scale: 0.88;
+}
+html[data-font-scale='md'] {
+  --prayer-text-scale: 1;
+}
+html[data-font-scale='lg'] {
+  --prayer-text-scale: 1.22;
+}
+
+.prayer-verse {
+  font-size: calc(clamp(1.125rem, 2.2vw + 0.5rem, 2.25rem) * var(--prayer-text-scale, 1));
+}
+
+.prayer-markdown-body .prayer-verse {
+  line-height: 1.65;
+}
+
+.prayer-progress-dots {
+  width: 100%;
+}
+
+.prayer-progress-dot {
+  height: 100%;
+}
+
+.focus-mode .prayer-timing-bar {
+  display: none;
+}
+
+.sidebar-panel {
+  background: rgba(12, 8, 5, 0.62);
+}
+
+.sidebar-app-title {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  cursor: default;
+}
+
+.sidebar-version-on-hover {
+  opacity: 0;
+  transform: translateY(1px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  font-size: 0.85em;
+  color: rgba(232, 224, 216, 0.9);
+}
+
+.sidebar-app-title:hover .sidebar-version-on-hover {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Split-flap / departure-board ticker (vertical, face-on) */
+.ticker-viewport {
+  position: relative;
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+}
+
+.ticker-viewport::before,
+.ticker-viewport::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 28%;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.ticker-viewport::before {
+  top: 0;
+  background: linear-gradient(to bottom, rgba(12, 8, 5, 0.85), transparent);
+}
+
+.ticker-viewport::after {
+  bottom: 0;
+  background: linear-gradient(to top, rgba(12, 8, 5, 0.85), transparent);
+}
+
+.ticker-slot {
+  position: absolute;
+  top: 50%;
+  left: 0.5rem;
+  right: 0.5rem;
+  height: 52px;
+  transform: translateY(-50%);
+  border-top: 1px solid rgba(212, 175, 55, 0.45);
+  border-bottom: 1px solid rgba(212, 175, 55, 0.45);
+  background: rgba(212, 175, 55, 0.04);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.ticker-track {
+  will-change: transform;
+  transition: transform 0.35s linear;
+}
+
+.ticker-row {
+  height: 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.5rem;
+  opacity: 0.35;
+  text-align: center;
+}
+
+.ticker-row.is-active {
+  opacity: 1;
+}
+
+.ticker-row-label {
+  font-family: var(--font-serif);
+  font-size: clamp(0.95rem, 1.4vw, 1.2rem);
+  line-height: 1.15;
+  color: var(--color-monastery-text);
+}
+
+.ticker-row.is-active .ticker-row-label {
+  color: var(--color-monastery-accent);
+  font-weight: 600;
+  font-size: clamp(1.05rem, 1.6vw, 1.35rem);
+}
+
+.ticker-row-hint {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  opacity: 0.45;
+  margin-top: 0.15rem;
+}
+
+.ticker-viewport--prayer .ticker-slot {
+  left: 1rem;
+  right: 1rem;
+  height: auto;
+  min-height: 4rem;
+  top: 35%;
+  transform: translateY(-35%);
+}
+
+.ticker-track--prayer {
+  transition: transform 0.2s linear;
+}
+
+.sidebar-wheel-group-label {
+  font-family: var(--font-serif);
+  font-size: clamp(1.1rem, 1.8vw, 1.45rem);
+  color: var(--color-monastery-accent);
+}
+
+.sidebar-wheel-group-next,
+.sidebar-wheel-eta {
+  font-size: clamp(0.85rem, 1.2vw, 1rem);
+  margin-top: 0.35rem;
+}
+
+.sidebar-wheel-eta {
+  color: var(--color-monastery-accent);
+  opacity: 0.85;
+}
+
+.sidebar-footer-btn {
+  width: 100%;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  border: 1px solid rgba(212, 175, 55, 0.25);
+  padding: 0.65rem 1rem;
+  border-radius: 6px;
+  min-height: 48px;
+  opacity: 0.85;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.sidebar-footer-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(212, 175, 55, 0.45);
+  opacity: 1;
+}
+
+@media (min-width: 1920px) {
+  .sidebar-clock h1 {
+    font-size: 3.5rem !important;
+  }
+
+  .sidebar-label {
+    font-size: 0.95rem;
+  }
+
+  .sidebar-now-title {
+    font-size: 2rem;
+  }
+
+  .sidebar-next-line {
+    font-size: 1.35rem;
+  }
+
+  .sidebar-nearby-list,
+  .sidebar-groups-list {
+    font-size: 1.35rem;
+  }
+
+  .sidebar-rhythm-name {
+    font-size: 1.35rem;
+  }
+
+  .sidebar-footer-btn {
+    font-size: 1rem;
+    min-height: 56px;
+  }
+}
+
+@media (min-width: 1920px) {
+  html[data-font-scale='lg'] {
+    --prayer-text-scale: 1.35;
+  }
+}
+
+.global-vignette {
+  display: none;
+}
+
+/* Toggle handle for the (hidden) transport bar */
+.transport-toggle {
+  position: fixed;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 55;
+}
+
+.playing .markdown-body { text-shadow: none; }
 
 /* Light Shafts (God Rays) */
 .light-shafts {
@@ -137,7 +418,7 @@ body {
   z-index: 1;
   pointer-events: none;
   overflow: hidden;
-  opacity: 0.4;
+  opacity: 0.05;
 }
 
 .light-shaft {
@@ -156,8 +437,8 @@ body {
     transparent 25%,
     transparent 40%
   );
-  opacity: 0.1;
-  filter: blur(40px);
+  opacity: 0.04;
+  filter: blur(20px);
   animation: sweep 25s ease-in-out infinite alternate;
 }
 
