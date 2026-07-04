@@ -1,4 +1,4 @@
-# Cathedral — Developer Handover & Context (v1.2.3)
+# Cathedral — Developer Handover & Context (v1.3.0)
 
 ## 1. Project Overview
 A monastic prayer application (Liturgical Hours) featuring AI-generated prayers, procedural visuals ("Cosmic Resonator"), and a community-driven manual voice recording system.
