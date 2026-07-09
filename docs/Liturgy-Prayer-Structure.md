@@ -2,7 +2,7 @@
 
 ## 1) What the app shows
 The day is divided into **7 liturgical hours**:
-- **Maitines** (Matins)
+- **Maitines** (Oficio de Lectura)
 - **Laudes** (Morning prayer)
 - **Tercia** (Mid-morning)
 - **Sexta** (Midday)
@@ -14,6 +14,8 @@ Additionally, the app includes **Ángelus** as a separate prayer at:
 - **06:00**
 - **12:00**
 - **18:00**
+
+**Source (v1.3.9+):** day-correct Spanish texts from liturgiadelashoras.github.io when online; otherwise local psalter fragments. See `docs/features/Scheduled-Prayers-Booklets.md` for coverage counts.
 
 ## 2) “Groups” and “prayers”
 - A **Group** is either:

@@ -47,9 +47,8 @@ Mobile: sidebar hidden until **mobile-header → Menú (☰)** opens it.
 | **prayer-text-scroll** | Main reading area (vertical ticker of psalm text) |
 | **AutoPager header** | Subtitle (small caps) + title (e.g. Salmo 141) — hidden on mobile |
 | **ticker-viewport--prayer** | Prayer text viewport with gold **ticker-slot** band |
-| **prayer-verse** | Each line / paragraph of the psalm |
-| **liturgy-char** | Per-character highlight as reading progresses |
-| **sacred-frame** | Thin decorative border around text |
+| **prayer-verse** | Steady paragraph text (no per-char recolor) |
+| **sacred-frame** | Thin decorative border (hidden in phone landscape) |
 | **fragment-nav — prev / next** | ‹ › buttons (also ← → keys, swipe) |
 
 ---
@@ -79,14 +78,13 @@ Mobile: sidebar hidden until **mobile-header → Menú (☰)** opens it.
 
 ## Full-screen atmosphere (behind UI)
 
-| Layer | Name |
-|-------|------|
-| **background-layers** | Hour-themed sacred art, parallax |
-| **global-vignette** | Dark edge fade |
-| **incense-trail** | Particle motion |
-| **light-shafts** | God-rays |
-| **dust-motes** | Floating dust |
-| **celestial-clockwork** | Slow rotating sacred geometry |
+| Layer | Name | Notes |
+|-------|------|-------|
+| **background-layers** | Hour-themed sacred art | Static (no mouse parallax) |
+| **light-shafts** | Soft god-rays | Hidden on phone landscape |
+| ~~incense / dust / celestial~~ | Removed from default stack | Too busy / flicker on phones |
+
+**Hard constraint:** phone landscape — `docs/features/Mobile-Landscape.md`.
 
 ---
 
@@ -121,4 +119,4 @@ Default UI and prayers: **castellano (es)**.
 
 ## Version
 
-Shown in sidebar footer: `v{VERSION}` (e.g. v1.3.8).
+Shown near app title on hover / mobile header: `v{VERSION}` (e.g. v1.4.0).

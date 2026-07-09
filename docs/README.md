@@ -4,7 +4,8 @@ This folder consolidates project documentation so an AI agent can reliably find 
 
 ## How to use
 
-1. Start with `docs/agent/README.md` for the “what/how/why”.
-2. Browse `docs/features/` for feature-specific notes aligned with the current `src/` code.
-3. Browse `docs/roadmap/` for next steps and open questions.
+1. Start with `docs/agent/MEMORY.md` for current state.
+2. **Phone landscape is mandatory:** `docs/features/Mobile-Landscape.md`.
+3. UI element IDs: `docs/UI-SCREEN-MAP.md`.
+4. Other feature notes under `docs/features/`; deploy under `docs/roadmap/`.
 

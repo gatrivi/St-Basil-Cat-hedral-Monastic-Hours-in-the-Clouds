@@ -1,0 +1,8 @@
+https://liturgiadelashoras.github.io/
+
+# Inventory / scheduled-prayers booklet source
+# - This project keeps offline/manual reference materials under `public/booklets/`.
+# - The on-screen “scheduled prayers” text is currently generated/served from code fragments
+#   (`src/lib/hours.ts`, `src/lib/liturgicalFragments.ts`, `src/lib/liturgicalDay.ts`).
+# - These documents/PDFs support manual reference (and can be wired into ingestion/static
+#   fallback later).

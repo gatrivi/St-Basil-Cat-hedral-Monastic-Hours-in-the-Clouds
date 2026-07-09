@@ -35,11 +35,15 @@ function versionJsonPlugin() {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
+  let pkgVersion = '1.4.0';
+  try {
+    pkgVersion = JSON.parse(readFileSync(resolve('package.json'), 'utf8')).version || pkgVersion;
+  } catch { /* ignore */ }
   return {
     plugins: [react(), tailwindcss(), versionJsonPlugin()],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || process.env.GEMINI_API_KEY || ''),
-      '__APP_VERSION__': JSON.stringify(process.env.npm_package_version || '1.2.0'),
+      '__APP_VERSION__': JSON.stringify(pkgVersion),
     },
     resolve: {
       alias: {

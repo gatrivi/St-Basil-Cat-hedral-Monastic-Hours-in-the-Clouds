@@ -1,20 +1,18 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# La Catedral
 
-# Run and deploy your AI Studio app
+Liturgy of the Hours — calm reading UI for phone, TV, and desktop.
 
-This contains everything you need to run your app locally.
+**Hard constraint:** must work on tiny phones in **landscape** (e.g. Nubia Focus 5G). See [`docs/features/Mobile-Landscape.md`](docs/features/Mobile-Landscape.md).
 
-View your app in AI Studio: https://ai.studio/apps/7cb91081-c1d5-4840-be06-357350688647
+## Run locally
 
-## Run Locally
+1. `npm install`
+2. Optional: `GEMINI_API_KEY` in `.env.local` (falls back to built-in prayers)
+3. Optional: Piper TTS at `VITE_TTS_SERVER_URL` (default `http://127.0.0.1:3001`)
+4. `npm run dev`
 
-**Prerequisites:**  Node.js
+## Docs
 
+Agent-first, human-readable: [`docs/`](docs/) — start at [`docs/agent/MEMORY.md`](docs/agent/MEMORY.md).
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Current UI version: **v1.4.5** (from `package.json` / Vite).
